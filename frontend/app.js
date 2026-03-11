@@ -205,6 +205,7 @@ function renderChart(comparePayload) {
         {
           label: comparePayload.series_a.name,
           data: valuesA,
+          yAxisID: "yLeft",
           borderColor: "#155e75",
           backgroundColor: "rgba(21, 94, 117, 0.14)",
           borderWidth: 2,
@@ -216,6 +217,7 @@ function renderChart(comparePayload) {
         {
           label: comparePayload.series_b.name,
           data: valuesB,
+          yAxisID: "yRight",
           borderColor: "#9a3412",
           backgroundColor: "rgba(154, 52, 18, 0.14)",
           borderWidth: 2,
@@ -297,7 +299,19 @@ function renderChart(comparePayload) {
             maxTicksLimit: 9,
           },
         },
+        yLeft: {
+          type: "linear",
+          position: "left",
+        },
+        yRight: {
+          type: "linear",
+          position: "right",
+          grid: {
+            drawOnChartArea: false,
+          },
+        },
         eventAxis: {
+          axis: "y",
           display: false,
           min: 0,
           max: 1,

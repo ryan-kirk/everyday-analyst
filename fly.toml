@@ -1,40 +1,43 @@
-app = "everyday-analyst"
-primary_region = "ord"
+# fly.toml app configuration file generated for everyday-analyst on 2026-03-11T13:52:52-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'everyday-analyst'
+primary_region = 'ord'
 
 [build]
-  dockerfile = "Dockerfile"
+  dockerfile = 'Dockerfile'
 
 [env]
-  PORT = "8080"
-  DATABASE_URL = "sqlite:////data/everyday_analyst.db"
+  DATABASE_URL = 'sqlite:////data/everyday_analyst.db'
+  PORT = '8080'
+
+[[mounts]]
+  source = 'data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8080
   force_https = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  auto_stop_machines = "stop"
-  # SQLite is mounted to a single Fly volume, so keep one machine.
   min_machines_running = 1
-  max_machines_running = 1
-  processes = ["app"]
+  processes = ['app']
 
   [http_service.concurrency]
-    type = "connections"
-    soft_limit = 25
+    type = 'connections'
     hard_limit = 50
+    soft_limit = 25
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "5s"
-    grace_period = "20s"
-    method = "GET"
-    path = "/health"
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  cpu_kind = "shared"
+  memory = '512mb'
   cpus = 1
   memory_mb = 512
-
-[[mounts]]
-  source = "data"
-  destination = "/data"

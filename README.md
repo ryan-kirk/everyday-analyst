@@ -273,13 +273,13 @@ fly deploy
 Run ingestion inside the deployed machine:
 
 ```bash
-fly ssh console -C "cd /app && python scripts/load_initial_data.py"
+fly ssh console -C "python /app/scripts/load_initial_data.py"
 ```
 
 Optional BLS backfill:
 
 ```bash
-fly ssh console -C "cd /app && python scripts/load_bls_series.py"
+fly ssh console -C "python /app/scripts/load_bls_series.py"
 ```
 
 ### 6. Verify
@@ -301,7 +301,7 @@ fly deploy
 - Re-run event refresh:
 
 ```bash
-fly ssh console -C "cd /app && python scripts/load_events.py"
+fly ssh console -C "python /app/scripts/load_events.py"
 ```
 
 - Scale guidance:
@@ -452,3 +452,4 @@ Key constraints relevant to this app:
 - Expand abuse protections/rate-limiting/caching strategy.
 - Add richer metadata and explanatory insights per series.
 - Add more tests for modules and edge-case ingestion failures.
+- Add weekly, monthly type views 
