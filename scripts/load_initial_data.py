@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -10,24 +11,37 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.db.base import Base
 from app.db.database import engine
-from app.ingestion.fred_client import fetch_series_observations, store_observations
+from app.db.schema_utils import ensure_event_columns
+from app.jobs.ingestion_jobs import (
+    DEFAULT_FRED_SERIES_IDS,
+    run_event_ingestion_job,
+    run_fred_ingestion_job,
+)
 
-INITIAL_SERIES_IDS = ["DGS2", "UNRATE"]
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s - %(message)s",
+)
 
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)
-
-    try:
-        for source_series_id in INITIAL_SERIES_IDS:
-            observations = fetch_series_observations(source_series_id)
-            changed_count = store_observations(source_series_id, observations)
-            print(
-                f"Loaded {source_series_id}: fetched={len(observations)} "
-                f"inserted_or_updated={changed_count}"
-            )
-    except RuntimeError as exc:
-        raise SystemExit(str(exc)) from exc
+    ensure_event_columns(engine)
+    result = run_fred_ingestion_job(series_ids=DEFAULT_FRED_SERIES_IDS)
+    summary = result["summary"]
+    print(
+        "FRED load complete:",
+        f"series={summary['series_count']}",
+        f"fetched={summary['fetched']}",
+        f"changed={summary['changed']}",
+    )
+    event_result = run_event_ingestion_job()
+    event_summary = event_result["summary"]
+    print(
+        "Event load complete:",
+        f"fetched={event_summary['fetched']}",
+        f"changed={event_summary['changed']}",
+    )
 
 
 if __name__ == "__main__":

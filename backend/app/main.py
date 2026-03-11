@@ -11,6 +11,7 @@ from app.api.health import router as health_router
 from app.api.series import router as series_router
 from app.db.base import Base
 from app.db.database import engine
+from app.db.schema_utils import ensure_event_columns
 from app import models  # noqa: F401  # Ensures model metadata is registered.
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
@@ -19,6 +20,7 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
+    ensure_event_columns(engine)
     yield
 
 

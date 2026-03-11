@@ -63,7 +63,7 @@
 
       .controls {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 0.8rem;
         padding: 1rem;
         margin-bottom: 1rem;
@@ -149,6 +149,18 @@
         <div>
           <label for="seriesB">Series B</label>
           <select id="seriesB"></select>
+        </div>
+
+        <div>
+          <label for="eventCategory">Event Category</label>
+          <select id="eventCategory">
+            <option value="">All</option>
+            <option value="fomc">FOMC</option>
+            <option value="inflation">Inflation</option>
+            <option value="labor">Labor</option>
+            <option value="growth">Growth</option>
+            <option value="housing">Housing</option>
+          </select>
         </div>
 
         <div>

@@ -12,7 +12,7 @@ def list_events(
     end: date | None = None,
     category: str | None = None,
 ) -> list[Event]:
-    stmt: Select[tuple[Event]] = select(Event).order_by(Event.event_date.desc())
+    stmt: Select[tuple[Event]] = select(Event).order_by(Event.event_date.asc())
     if start is not None:
         stmt = stmt.where(Event.event_date >= start)
     if end is not None:
@@ -20,4 +20,3 @@ def list_events(
     if category is not None:
         stmt = stmt.where(Event.category == category)
     return list(db.scalars(stmt).all())
-

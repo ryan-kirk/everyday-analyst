@@ -9,7 +9,7 @@ class EventBase(BaseModel):
     summary: str | None = None
     category: str | None = None
     source: str | None = None
-    source_url: str | None = None
+    importance_score: float | None = None
 
 
 class EventCreate(EventBase):

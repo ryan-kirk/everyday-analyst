@@ -1,21 +1,31 @@
 from __future__ import annotations
 
+import logging
 import os
 from datetime import date
 from typing import Any
 
-import requests
-from sqlalchemy import select
-
-from app.db.database import SessionLocal
+from app.ingestion.http_client import request_json_with_retry
+from app.ingestion.storage import SeriesMetadata, store_series_observations
 from app.models.observation import Observation
-from app.models.series import Series
+
+logger = logging.getLogger(__name__)
 
 FRED_API_BASE_URL = "https://api.stlouisfed.org/fred"
 FRED_SOURCE = "fred"
+
 SERIES_CATEGORY_OVERRIDES = {
     "DGS2": "treasury_rates",
+    "DGS10": "treasury_rates",
+    "T10Y2Y": "treasury_spread",
     "UNRATE": "labor",
+    "PAYEMS": "labor",
+    "CPIAUCSL": "inflation",
+    "PCEPI": "inflation",
+    "INDPRO": "production",
+    "MORTGAGE30US": "housing",
+    "CSUSHPISA": "housing",
+    "HOUST": "housing",
 }
 
 
@@ -32,12 +42,10 @@ def _fred_get(endpoint: str, **params: Any) -> dict[str, Any]:
         "file_type": "json",
         **params,
     }
-    response = requests.get(f"{FRED_API_BASE_URL}{endpoint}", params=query_params, timeout=30)
-    response.raise_for_status()
-    return response.json()
+    return request_json_with_retry("GET", f"{FRED_API_BASE_URL}{endpoint}", params=query_params)
 
 
-def fetch_series_metadata(series_id: str) -> dict[str, str | None]:
+def fetch_series_metadata(series_id: str) -> SeriesMetadata:
     payload = _fred_get("/series", series_id=series_id)
     series_items = payload.get("seriess", [])
     if not series_items:
@@ -54,12 +62,21 @@ def fetch_series_metadata(series_id: str) -> dict[str, str | None]:
     }
 
 
-def fetch_series_observations(series_id: str) -> list[Observation]:
-    payload = _fred_get(
-        "/series/observations",
-        series_id=series_id,
-        sort_order="asc",
-    )
+def fetch_series_observations(
+    series_id: str,
+    start: date | None = None,
+    end: date | None = None,
+) -> list[Observation]:
+    params: dict[str, str] = {
+        "series_id": series_id,
+        "sort_order": "asc",
+    }
+    if start is not None:
+        params["observation_start"] = start.isoformat()
+    if end is not None:
+        params["observation_end"] = end.isoformat()
+
+    payload = _fred_get("/series/observations", **params)
     raw_observations = payload.get("observations", [])
 
     normalized: list[Observation] = []
@@ -78,62 +95,37 @@ def fetch_series_observations(series_id: str) -> list[Observation]:
                 )
             )
         except (TypeError, ValueError):
+            logger.warning(
+                "Skipping malformed FRED observation series=%s date=%s value=%s",
+                series_id,
+                observation_date_raw,
+                value_raw,
+            )
             continue
 
+    logger.info("Fetched FRED observations series=%s count=%s", series_id, len(normalized))
     return normalized
 
 
 def store_observations(series_id: str, observations: list[Observation]) -> int:
     metadata = fetch_series_metadata(series_id)
+    result = store_series_observations(metadata, observations)
+    return result["changed"]
 
-    with SessionLocal() as db:
-        series = db.scalar(
-            select(Series).where(
-                Series.source == FRED_SOURCE,
-                Series.source_series_id == series_id,
-            )
-        )
 
-        if series is None:
-            series = Series(
-                name=metadata["name"] or series_id,
-                source=FRED_SOURCE,
-                source_series_id=series_id,
-                units=metadata["units"],
-                frequency=metadata["frequency"],
-                category=metadata["category"],
-            )
-            db.add(series)
-            db.flush()
-        else:
-            series.name = metadata["name"] or series.name
-            series.units = metadata["units"]
-            series.frequency = metadata["frequency"]
-            series.category = metadata["category"]
-
-        existing_by_date = {
-            row.observation_date: row
-            for row in db.scalars(
-                select(Observation).where(Observation.series_id == series.id)
-            ).all()
-        }
-
-        changed_count = 0
-        for obs in observations:
-            existing = existing_by_date.get(obs.observation_date)
-            if existing is None:
-                db.add(
-                    Observation(
-                        series_id=series.id,
-                        observation_date=obs.observation_date,
-                        value=obs.value,
-                    )
-                )
-                changed_count += 1
-            elif existing.value != obs.value:
-                existing.value = obs.value
-                changed_count += 1
-
-        db.commit()
-        return changed_count
+def ingest_series(
+    series_id: str,
+    start: date | None = None,
+    end: date | None = None,
+) -> dict[str, int]:
+    metadata = fetch_series_metadata(series_id)
+    observations = fetch_series_observations(series_id=series_id, start=start, end=end)
+    result = store_series_observations(metadata, observations)
+    logger.info(
+        "Ingested FRED series=%s fetched=%s changed=%s",
+        series_id,
+        result["fetched"],
+        result["changed"],
+    )
+    return result
 

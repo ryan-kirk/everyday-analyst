@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.base import Base
 from app.ingestion import fred_client
+from app.ingestion.storage import store_series_observations
 from app.models.observation import Observation
 from app.models.series import Series
 
@@ -24,11 +25,11 @@ class TestFredClient(TestCase):
         )
         Base.metadata.create_all(self.engine)
 
-        self.original_session_local = fred_client.SessionLocal
-        fred_client.SessionLocal = self.testing_session_local
+        self.session_patcher = patch("app.ingestion.storage.SessionLocal", self.testing_session_local)
+        self.session_patcher.start()
 
     def tearDown(self) -> None:
-        fred_client.SessionLocal = self.original_session_local
+        self.session_patcher.stop()
         self.engine.dispose()
 
     def test_fetch_series_observations_normalizes_valid_points(self) -> None:
@@ -51,7 +52,7 @@ class TestFredClient(TestCase):
         self.assertEqual(date(2024, 1, 5), observations[1].observation_date)
         self.assertEqual(4.30, observations[1].value)
 
-    def test_store_observations_upserts_rows(self) -> None:
+    def test_store_series_observations_upserts_rows(self) -> None:
         metadata = {
             "name": "2-Year Treasury Constant Maturity Rate",
             "source": "fred",
@@ -65,9 +66,10 @@ class TestFredClient(TestCase):
             Observation(series_id=0, observation_date=date(2024, 1, 3), value=4.31),
         ]
 
-        with patch("app.ingestion.fred_client.fetch_series_metadata", return_value=metadata):
-            changed_count = fred_client.store_observations("DGS2", initial)
-        self.assertEqual(2, changed_count)
+        result = store_series_observations(metadata=metadata, observations=initial)
+        self.assertEqual(2, result["changed"])
+        self.assertEqual(2, result["inserted"])
+        self.assertEqual(0, result["updated"])
 
         with self.testing_session_local() as db:
             series = db.scalar(select(Series).where(Series.source_series_id == "DGS2"))
@@ -85,9 +87,10 @@ class TestFredClient(TestCase):
             Observation(series_id=0, observation_date=date(2024, 1, 3), value=4.35),
             Observation(series_id=0, observation_date=date(2024, 1, 4), value=4.40),
         ]
-        with patch("app.ingestion.fred_client.fetch_series_metadata", return_value=metadata):
-            changed_count = fred_client.store_observations("DGS2", updated)
-        self.assertEqual(2, changed_count)
+        result = store_series_observations(metadata=metadata, observations=updated)
+        self.assertEqual(2, result["changed"])
+        self.assertEqual(1, result["inserted"])
+        self.assertEqual(1, result["updated"])
 
         with self.testing_session_local() as db:
             series = db.scalar(select(Series).where(Series.source_series_id == "DGS2"))

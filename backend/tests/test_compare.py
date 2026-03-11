@@ -9,6 +9,7 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.database import get_db
 from app.main import app
+from app.models.event import Event
 from app.models.observation import Observation
 from app.models.series import Series
 
@@ -66,6 +67,34 @@ class TestCompareEndpoint(TestCase):
                     Observation(series_id=series_b.id, observation_date=date(2024, 1, 3), value=2.3),
                 ]
             )
+            db.add_all(
+                [
+                    Event(
+                        event_date=date(2024, 1, 1),
+                        title="FOMC Meeting",
+                        summary="Scheduled FOMC meeting",
+                        category="fomc",
+                        source="federal_reserve_fomc_calendar",
+                        importance_score=0.95,
+                    ),
+                    Event(
+                        event_date=date(2024, 1, 2),
+                        title="Nonfarm Payroll Release",
+                        summary="Employment Situation release",
+                        category="labor",
+                        source="fred_release_calendar",
+                        importance_score=0.92,
+                    ),
+                    Event(
+                        event_date=date(2024, 1, 3),
+                        title="CPI Release",
+                        summary="Consumer price index release",
+                        category="inflation",
+                        source="fred_release_calendar",
+                        importance_score=0.9,
+                    ),
+                ]
+            )
             db.commit()
 
         app.dependency_overrides[get_db] = override_get_db
@@ -100,6 +129,9 @@ class TestCompareEndpoint(TestCase):
             ],
             payload["observations"],
         )
+        self.assertEqual(3, len(payload["events"]))
+        self.assertEqual("FOMC Meeting", payload["events"][0]["title"])
+        self.assertEqual("2024-01-01", payload["events"][0]["event_date"])
 
     def test_compare_returns_points_when_only_one_series_has_values(self) -> None:
         response = self.client.get(
@@ -121,3 +153,19 @@ class TestCompareEndpoint(TestCase):
         response = self.client.get("/compare", params={"series_a": 999, "series_b": 2})
         self.assertEqual(404, response.status_code)
         self.assertEqual("Series not found for series_a=999", response.json()["detail"])
+
+    def test_compare_filters_events_by_category(self) -> None:
+        response = self.client.get(
+            "/compare",
+            params={
+                "series_a": 1,
+                "series_b": 2,
+                "start": "2024-01-01",
+                "end": "2024-01-03",
+                "event_category": "labor",
+            },
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertEqual(1, len(payload["events"]))
+        self.assertEqual("labor", payload["events"][0]["category"])

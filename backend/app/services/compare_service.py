@@ -3,6 +3,7 @@ from datetime import date
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
+from app.models.event import Event
 from app.models.observation import Observation
 from app.models.series import Series
 from app.schemas.compare import CompareObservationRead
@@ -59,3 +60,21 @@ def get_aligned_observations(
         )
         for obs_date in all_dates
     ]
+
+
+def get_events_in_range(
+    db: Session,
+    start: date | None = None,
+    end: date | None = None,
+    categories: list[str] | None = None,
+) -> list[Event]:
+    stmt: Select[tuple[Event]] = select(Event).order_by(Event.event_date.asc(), Event.id.asc())
+
+    if start is not None:
+        stmt = stmt.where(Event.event_date >= start)
+    if end is not None:
+        stmt = stmt.where(Event.event_date <= end)
+    if categories:
+        stmt = stmt.where(Event.category.in_(categories))
+
+    return list(db.scalars(stmt).all())

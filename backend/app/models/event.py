@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, Integer, String, Text
+from sqlalchemy import Date, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -15,4 +15,4 @@ class Event(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     category: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     source: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    source_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    importance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
