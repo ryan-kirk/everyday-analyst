@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Everyday Analyst</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      :root {
+        --bg: #f7f4ec;
+        --ink: #1d2430;
+        --surface: #ffffff;
+        --surface-2: #f2ede1;
+        --accent-a: #155e75;
+        --accent-b: #9a3412;
+        --line: #d7d0c0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: "Space Grotesk", sans-serif;
+        background:
+          radial-gradient(circle at 12% 12%, #f8e9cc 0%, transparent 45%),
+          radial-gradient(circle at 88% 85%, #dcecf5 0%, transparent 38%),
+          var(--bg);
+        color: var(--ink);
+      }
+
+      .page {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 2rem 1rem 2.5rem;
+      }
+
+      h1 {
+        margin: 0 0 0.4rem;
+        font-size: clamp(1.6rem, 2.8vw, 2.4rem);
+        line-height: 1.1;
+      }
+
+      .subtitle {
+        margin: 0 0 1.2rem;
+        color: #405267;
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.05);
+      }
+
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 0.8rem;
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      label {
+        display: block;
+        font-size: 0.84rem;
+        font-weight: 700;
+        margin-bottom: 0.3rem;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+
+      input,
+      select,
+      button {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--surface-2);
+        color: var(--ink);
+        padding: 0.55rem 0.65rem;
+        font: inherit;
+      }
+
+      button {
+        background: linear-gradient(120deg, var(--accent-a), #1f7a95);
+        color: #fff;
+        border-color: transparent;
+        font-weight: 700;
+        cursor: pointer;
+        margin-top: 1.35rem;
+      }
+
+      button:hover {
+        filter: brightness(1.04);
+      }
+
+      .status {
+        margin: 0 0 0.6rem;
+        min-height: 1.35rem;
+        color: #3e4f61;
+        font-size: 0.95rem;
+      }
+
+      .chart-wrap {
+        padding: 1rem;
+      }
+
+      #compareChart {
+        width: 100%;
+        min-height: 400px;
+      }
+
+      @media (max-width: 900px) {
+        .controls {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .controls .span-2 {
+          grid-column: span 2;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <h1>Everyday Analyst</h1>
+      <p class="subtitle">Compare two public time series on a shared timeline.</p>
+
+      <section class="card controls">
+        <div class="span-2">
+          <label for="apiBaseUrl">API Base URL</label>
+          <input id="apiBaseUrl" value="" />
+        </div>
+
+        <div>
+          <label for="seriesA">Series A</label>
+          <select id="seriesA"></select>
+        </div>
+
+        <div>
+          <label for="seriesB">Series B</label>
+          <select id="seriesB"></select>
+        </div>
+
+        <div>
+          <label for="startDate">Start</label>
+          <input id="startDate" type="date" />
+        </div>
+
+        <div>
+          <label for="endDate">End</label>
+          <input id="endDate" type="date" />
+        </div>
+
+        <div class="span-2">
+          <button id="compareBtn" type="button">Render Comparison</button>
+        </div>
+      </section>
+
+      <p id="status" class="status"></p>
+
+      <section class="card chart-wrap">
+        <canvas id="compareChart" aria-label="Comparison chart"></canvas>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
