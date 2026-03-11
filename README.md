@@ -7,6 +7,8 @@ Everyday Analyst is an MVP decision-support app for comparing two public time se
 - Ingests normalized time series data from FRED and BLS.
 - Ingests notable events (FOMC, CPI releases, NFP releases, GDP releases).
 - Serves API endpoints for series, observations, events, and two-series comparison.
+- Serves an insights endpoint that summarizes correlation, inflections, major moves, and nearby events.
+- Serves preset analyst workflows (Fed Watch, Inflation vs Rates, Housing vs Mortgage Rates, Labor Market vs Rates, etc.).
 - Renders a browser-based chart comparison UI with:
   - two series selectors
   - date range controls
@@ -151,6 +153,23 @@ Example compare response shape:
 }
 ```
 
+### `GET /insights?series_a=&series_b=&start=&end=`
+- Returns deterministic analysis for two series over a date window:
+  - aligned and overlap stats
+  - correlation on overlapping values
+  - detected inflection points
+  - major one-step movements
+  - nearby event associations
+  - narrative summary text
+
+### `GET /presets`
+- Returns stored preset comparison templates for predefined analyst workflows.
+- Each preset includes:
+  - `series_a` (source series id)
+  - `series_b` (source series id)
+  - `recommended_date_range` (relative window, for example `1y`, `3y`, `5y`)
+  - `description`
+
 ## Backend Modules
 
 ### API Layer (`backend/app/api`)
@@ -163,11 +182,14 @@ Example compare response shape:
 - `series_service.py`: DB query logic for series and observations.
 - `event_service.py`: DB query logic for event ranges/categories.
 - `compare_service.py`: date alignment and compare event retrieval.
+- `insight_service.py`: inflection/correlation/major-move detection and narrative generation.
+- `preset_service.py`: default preset seeding and preset retrieval.
 
 ### Models (`backend/app/models`)
 - `Series`: source metadata for each time series.
 - `Observation`: normalized dated values linked to `Series`.
 - `Event`: notable event timeline data with category and importance.
+- `Preset`: stored workflow templates with recommended pairings and date ranges.
 
 ### Schemas (`backend/app/schemas`)
 - Pydantic schemas for `series`, `event`, and `compare` responses.
@@ -223,7 +245,7 @@ python scripts/run_ingestion_scheduler.py
 ## Fly.io Deployment (Initial)
 
 This repository is set up to deploy as a single Fly app serving:
-- FastAPI API routes (`/health`, `/series`, `/events`, `/compare`)
+- FastAPI API routes (`/health`, `/series`, `/events`, `/compare`, `/insights`, `/presets`)
 - static frontend from the same container (`/`)
 
 Deployment files:
@@ -324,9 +346,11 @@ Current test modules:
 - `test_fred_client.py`
 - `test_bls_client.py`
 - `test_event_client.py`
+- `test_insights.py`
+- `test_presets_api.py`
 
 Coverage focus:
-- API behavior (`/health`, `/compare`, `/events`)
+- API behavior (`/health`, `/compare`, `/events`, `/insights`, `/presets`)
 - normalization/parsing for FRED, BLS, and event ingestion
 - storage upsert behavior for core ingestion paths
 
@@ -334,6 +358,7 @@ Coverage focus:
 
 Current UI (`frontend/index.html` + `frontend/app.js`):
 - API base URL input (with local dev auto-detection)
+- Preset workflow selector with auto-applied series/date-range templates
 - Series A / Series B selection
 - Date range selection
 - Event category filter
@@ -446,10 +471,9 @@ Key constraints relevant to this app:
 - To avoid this data flow, self-host font files.
 
 ## Known Follow-Up Work
-
-- Deploy to Fly.io (`flyctl`).
 - Add admin endpoint/CLI options for incremental backfills.
 - Expand abuse protections/rate-limiting/caching strategy.
-- Add richer metadata and explanatory insights per series.
+- Add a terms of service page that includes some use restrictions and user disclaimers. 
 - Add more tests for modules and edge-case ingestion failures.
 - Add weekly, monthly type views 
+- Add richer metadata and explanatory insights per series.

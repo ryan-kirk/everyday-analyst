@@ -63,7 +63,7 @@
 
       .controls {
         display: grid;
-        grid-template-columns: repeat(6, minmax(0, 1fr));
+        grid-template-columns: repeat(7, minmax(0, 1fr));
         gap: 0.8rem;
         padding: 1rem;
         margin-bottom: 1rem;
@@ -110,13 +110,170 @@
         font-size: 0.95rem;
       }
 
+      .preset-note {
+        margin: 0 0 0.8rem;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f9f6ef;
+        color: #42566b;
+        font-size: 0.92rem;
+        line-height: 1.35;
+      }
+
       .chart-wrap {
         padding: 1rem;
+        margin-bottom: 1rem;
       }
 
       #compareChart {
         width: 100%;
         min-height: 400px;
+      }
+
+      .panel {
+        padding: 1rem;
+        margin-bottom: 1rem;
+      }
+
+      .panel h2 {
+        margin: 0 0 0.35rem;
+        font-size: 1.2rem;
+      }
+
+      .panel-intro {
+        margin: 0 0 0.8rem;
+        color: #42566b;
+        font-size: 0.95rem;
+      }
+
+      .insights-summary {
+        margin: 0 0 0.8rem;
+        padding: 0.7rem 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #f9f6ef;
+        line-height: 1.45;
+      }
+
+      .insights-meta {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.6rem;
+        margin-bottom: 0.9rem;
+      }
+
+      .meta-item {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.55rem 0.6rem;
+        background: #faf9f5;
+      }
+
+      .meta-item-label {
+        font-size: 0.76rem;
+        color: #5c7084;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+      }
+
+      .meta-item-value {
+        font-size: 1rem;
+        font-weight: 700;
+      }
+
+      .insights-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.8rem;
+      }
+
+      .insight-block {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.7rem;
+        background: #faf9f5;
+      }
+
+      .insight-block h3 {
+        margin: 0 0 0.5rem;
+        font-size: 0.95rem;
+      }
+
+      .series-context-item {
+        margin-bottom: 0.6rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px dashed #d8d1c5;
+      }
+
+      .series-context-item:last-child {
+        margin-bottom: 0;
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+
+      .series-context-title {
+        font-weight: 700;
+      }
+
+      .series-context-meta {
+        margin-top: 0.2rem;
+        color: #4b6073;
+        font-size: 0.86rem;
+        line-height: 1.35;
+      }
+
+      .insight-list {
+        margin: 0;
+        padding-left: 1.1rem;
+      }
+
+      .insight-list li {
+        margin-bottom: 0.55rem;
+        line-height: 1.35;
+      }
+
+      .nearby-events {
+        margin: 0.2rem 0 0;
+        color: #4b6073;
+        font-size: 0.84rem;
+      }
+
+      .nearby-events-item {
+        margin-top: 0.15rem;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      .events-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .events-table th,
+      .events-table td {
+        padding: 0.5rem 0.45rem;
+        border-bottom: 1px solid #e0d9cc;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .events-table th {
+        font-size: 0.78rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: #51667c;
+      }
+
+      .events-table td {
+        font-size: 0.9rem;
+      }
+
+      .empty-note {
+        color: #5f7387;
+        font-size: 0.92rem;
       }
 
       @media (max-width: 900px) {
@@ -126,6 +283,14 @@
 
         .controls .span-2 {
           grid-column: span 2;
+        }
+
+        .insights-meta {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .insights-grid {
+          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -139,6 +304,13 @@
         <div class="span-2">
           <label for="apiBaseUrl">API Base URL</label>
           <input id="apiBaseUrl" value="" />
+        </div>
+
+        <div>
+          <label for="presetSelect">Preset Workflow</label>
+          <select id="presetSelect">
+            <option value="">Custom</option>
+          </select>
         </div>
 
         <div>
@@ -178,10 +350,64 @@
         </div>
       </section>
 
+      <p id="presetDescription" class="preset-note">
+        Select a preset workflow to auto-configure series and a recommended date range.
+      </p>
+
       <p id="status" class="status"></p>
 
       <section class="card chart-wrap">
         <canvas id="compareChart" aria-label="Comparison chart"></canvas>
+      </section>
+
+      <section class="card panel">
+        <h2>Insights</h2>
+        <p id="insightsLead" class="panel-intro">
+          Insights combine trend changes in both series with nearby events to help explain what may
+          be connected in this period.
+        </p>
+        <p id="insightsSummary" class="insights-summary empty-note">
+          Render a comparison to generate an insight summary.
+        </p>
+        <div id="insightsMeta" class="insights-meta"></div>
+
+        <div class="insights-grid">
+          <div class="insight-block">
+            <h3>Series Context</h3>
+            <div id="seriesContext" class="empty-note">No series loaded yet.</div>
+          </div>
+          <div class="insight-block">
+            <h3>Inflection Points</h3>
+            <div id="inflectionPoints" class="empty-note">No inflection data yet.</div>
+          </div>
+          <div class="insight-block">
+            <h3>Major Movements</h3>
+            <div id="majorMovements" class="empty-note">No movement data yet.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card panel">
+        <h2>Events In Range</h2>
+        <p class="panel-intro">
+          These events are plotted on the chart for the selected date range and event filter.
+        </p>
+        <div class="table-wrap">
+          <table class="events-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Event</th>
+                <th>Summary</th>
+              </tr>
+            </thead>
+            <tbody id="eventsTableBody">
+              <tr>
+                <td colspan="3" class="empty-note">No events loaded yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
     </main>
 
