@@ -46,7 +46,13 @@ everyday-analyst/
 
 ## Environment Variables
 
-Create a root `.env` file with:
+Copy `.env.example` to `.env`, then set values:
+
+```bash
+cp .env.example .env
+```
+
+Expected keys:
 
 ```env
 FRED_API_KEY=your_fred_key
@@ -213,6 +219,94 @@ python scripts/load_bls_series.py
 python scripts/load_events.py
 python scripts/run_ingestion_scheduler.py
 ```
+
+## Fly.io Deployment (Initial)
+
+This repository is set up to deploy as a single Fly app serving:
+- FastAPI API routes (`/health`, `/series`, `/events`, `/compare`)
+- static frontend from the same container (`/`)
+
+Deployment files:
+- `fly.toml`
+- `Dockerfile`
+
+Important architecture note:
+- Current production database is SQLite on a Fly volume (`/data/everyday_analyst.db`).
+- Because SQLite is file-based, this initial deployment is intentionally single-machine.
+
+### 1. Prerequisites
+
+- Install and authenticate Fly CLI:
+
+```bash
+fly auth login
+```
+
+### 2. Create app and volume (first time)
+
+From repo root:
+
+```bash
+fly launch --no-deploy --copy-config --name everyday-analyst --region ord
+fly volumes create data --region ord --size 1
+```
+
+If app name is already taken globally, pick a unique name and update `app = "..."` in `fly.toml`.
+
+### 3. Set required secrets
+
+```bash
+fly secrets set FRED_API_KEY=your_fred_api_key
+fly secrets set BLS_API_KEY=your_bls_api_key_optional
+```
+
+`DATABASE_URL` is already set in `fly.toml` to use the mounted volume path.
+
+### 4. Deploy
+
+```bash
+fly deploy
+```
+
+### 5. Load initial data on Fly
+
+Run ingestion inside the deployed machine:
+
+```bash
+fly ssh console -C "cd /app && python scripts/load_initial_data.py"
+```
+
+Optional BLS backfill:
+
+```bash
+fly ssh console -C "cd /app && python scripts/load_bls_series.py"
+```
+
+### 6. Verify
+
+```bash
+fly status
+fly logs
+curl https://<your-app-name>.fly.dev/health
+```
+
+### 7. Day-2 operations
+
+- Redeploy after code changes:
+
+```bash
+fly deploy
+```
+
+- Re-run event refresh:
+
+```bash
+fly ssh console -C "cd /app && python scripts/load_events.py"
+```
+
+- Scale guidance:
+  - Do not scale horizontally with SQLite volume architecture.
+  - Move to managed Postgres before multi-machine scaling.
 
 ## Unit Tests
 
