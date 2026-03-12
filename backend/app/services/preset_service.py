@@ -67,6 +67,46 @@ DEFAULT_PRESETS: list[PresetTemplate] = [
             "growth and rate environments."
         ),
     },
+    {
+        "name": "Market Stress",
+        "series_a": "SP500",
+        "series_b": "VIXCLS",
+        "recommended_date_range": "1y",
+        "description": (
+            "Compare equity prices with implied volatility to inspect risk-on/risk-off regimes "
+            "during market stress windows."
+        ),
+    },
+    {
+        "name": "Sentiment vs Spending",
+        "series_a": "UMCSENT",
+        "series_b": "RSAFS",
+        "recommended_date_range": "5y",
+        "description": (
+            "Track consumer sentiment alongside retail spending to compare confidence "
+            "and demand trends."
+        ),
+    },
+    {
+        "name": "Housing Permits vs Applications",
+        "series_a": "PERMIT",
+        "series_b": "M0264AUSM500NNBR",
+        "recommended_date_range": "5y",
+        "description": (
+            "Compare housing permits and mortgage applications as an early read on "
+            "housing demand momentum."
+        ),
+    },
+    {
+        "name": "Local Migration vs Permits",
+        "series_a": "NETMIGNACS006037",
+        "series_b": "BPPRIV006037",
+        "recommended_date_range": "5y",
+        "description": (
+            "Compare county migration flow and local housing permits for regional "
+            "population and supply context."
+        ),
+    },
 ]
 
 

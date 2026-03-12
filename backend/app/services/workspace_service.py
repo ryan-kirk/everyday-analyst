@@ -5,7 +5,7 @@ import hmac
 import secrets
 from datetime import date
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.saved_analysis import SavedAnalysis
@@ -74,9 +74,25 @@ def create_saved_analysis(
     is_bookmarked: bool = False,
     share_include_notes: bool = False,
 ) -> SavedAnalysis:
+    normalized_title = title.strip()
+    existing = get_saved_analysis_by_title(db=db, user_id=user_id, title=normalized_title)
+    if existing is not None:
+        existing.title = normalized_title
+        existing.description = description.strip() if description else None
+        existing.series_a_id = series_a_id
+        existing.series_b_id = series_b_id
+        existing.start_date = start_date
+        existing.end_date = end_date
+        existing.event_category_filter = event_category_filter.strip() if event_category_filter else None
+        existing.is_bookmarked = is_bookmarked
+        existing.share_include_notes = share_include_notes
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     analysis = SavedAnalysis(
         user_id=user_id,
-        title=title.strip(),
+        title=normalized_title,
         description=description.strip() if description else None,
         series_a_id=series_a_id,
         series_b_id=series_b_id,
@@ -91,6 +107,22 @@ def create_saved_analysis(
     db.commit()
     db.refresh(analysis)
     return analysis
+
+
+def get_saved_analysis_by_title(db: Session, user_id: int, title: str) -> SavedAnalysis | None:
+    normalized = title.strip().lower()
+    if not normalized:
+        return None
+    stmt: Select[tuple[SavedAnalysis]] = (
+        select(SavedAnalysis)
+        .where(
+            SavedAnalysis.user_id == user_id,
+            func.lower(SavedAnalysis.title) == normalized,
+        )
+        .order_by(SavedAnalysis.updated_at.desc(), SavedAnalysis.id.desc())
+        .limit(1)
+    )
+    return db.scalars(stmt).first()
 
 
 def list_saved_analyses(
@@ -199,6 +231,20 @@ def delete_saved_analysis_note(
         return False
 
     db.delete(note)
+    db.commit()
+    return True
+
+
+def delete_saved_analysis(
+    db: Session,
+    user_id: int,
+    analysis_id: int,
+) -> bool:
+    analysis = get_saved_analysis_for_user(db=db, user_id=user_id, analysis_id=analysis_id)
+    if analysis is None:
+        return False
+
+    db.delete(analysis)
     db.commit()
     return True
 

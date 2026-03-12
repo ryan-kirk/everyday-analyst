@@ -20,3 +20,13 @@ def list_events(
     if category is not None:
         stmt = stmt.where(Event.category == category)
     return list(db.scalars(stmt).all())
+
+
+def list_event_categories(db: Session) -> list[str]:
+    stmt: Select[tuple[str | None]] = (
+        select(Event.category)
+        .where(Event.category.is_not(None))
+        .distinct()
+        .order_by(Event.category.asc())
+    )
+    return [value for value in db.scalars(stmt).all() if value]

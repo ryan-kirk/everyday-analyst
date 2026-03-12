@@ -251,3 +251,117 @@ class TestWorkspaceAPI(TestCase):
             "invalid username or password",
             bad_password_response.json()["detail"],
         )
+
+    def test_saving_same_title_updates_existing_analysis_and_keeps_notes(self) -> None:
+        create_user_response = self.client.post(
+            "/workspace/users",
+            json={
+                "username": "dedupe_user",
+                "password": "StrongPass123",
+                "name": "Dedupe User",
+            },
+        )
+        self.assertEqual(201, create_user_response.status_code)
+        user_id = create_user_response.json()["id"]
+
+        first_save_response = self.client.post(
+            f"/workspace/users/{user_id}/saved-analyses",
+            json={
+                "title": "Rates Notebook",
+                "description": "first",
+                "series_a_id": 1,
+                "series_b_id": 2,
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31",
+                "event_category_filter": "fomc",
+            },
+        )
+        self.assertEqual(201, first_save_response.status_code)
+        first_saved = first_save_response.json()
+        analysis_id = first_saved["id"]
+
+        note_response = self.client.post(
+            f"/workspace/users/{user_id}/saved-analyses/{analysis_id}/notes",
+            json={"note_text": "Keep this note after view update."},
+        )
+        self.assertEqual(201, note_response.status_code)
+
+        second_save_response = self.client.post(
+            f"/workspace/users/{user_id}/saved-analyses",
+            json={
+                "title": "rates notebook",
+                "description": "updated",
+                "series_a_id": 2,
+                "series_b_id": 1,
+                "start_date": "2024-01-01",
+                "end_date": "2024-12-31",
+                "event_category_filter": "labor",
+                "is_bookmarked": True,
+            },
+        )
+        self.assertEqual(201, second_save_response.status_code)
+        second_saved = second_save_response.json()
+
+        self.assertEqual(analysis_id, second_saved["id"])
+        self.assertEqual("rates notebook", second_saved["title"])
+        self.assertTrue(second_saved["is_bookmarked"])
+        self.assertEqual(2, second_saved["series_a_id"])
+        self.assertEqual(1, second_saved["series_b_id"])
+        self.assertEqual("labor", second_saved["event_category_filter"])
+
+        list_saved_response = self.client.get(f"/workspace/users/{user_id}/saved-analyses")
+        self.assertEqual(200, list_saved_response.status_code)
+        listed = list_saved_response.json()
+        self.assertEqual(1, len(listed))
+        self.assertEqual(analysis_id, listed[0]["id"])
+
+        list_notes_response = self.client.get(
+            f"/workspace/users/{user_id}/saved-analyses/{analysis_id}/notes"
+        )
+        self.assertEqual(200, list_notes_response.status_code)
+        notes = list_notes_response.json()
+        self.assertEqual(1, len(notes))
+        self.assertIn("Keep this note", notes[0]["note_text"])
+
+    def test_delete_saved_analysis_removes_view_and_associated_notes(self) -> None:
+        create_user_response = self.client.post(
+            "/workspace/users",
+            json={
+                "username": "delete_view_user",
+                "password": "StrongPass123",
+                "name": "Delete View User",
+            },
+        )
+        self.assertEqual(201, create_user_response.status_code)
+        user_id = create_user_response.json()["id"]
+
+        save_response = self.client.post(
+            f"/workspace/users/{user_id}/saved-analyses",
+            json={
+                "title": "Delete Me",
+                "series_a_id": 1,
+                "series_b_id": 2,
+                "start_date": "2025-01-01",
+                "end_date": "2025-12-31",
+            },
+        )
+        self.assertEqual(201, save_response.status_code)
+        analysis_id = save_response.json()["id"]
+
+        note_response = self.client.post(
+            f"/workspace/users/{user_id}/saved-analyses/{analysis_id}/notes",
+            json={"note_text": "This note should be deleted with the analysis."},
+        )
+        self.assertEqual(201, note_response.status_code)
+
+        delete_response = self.client.delete(f"/workspace/users/{user_id}/saved-analyses/{analysis_id}")
+        self.assertEqual(204, delete_response.status_code)
+
+        list_saved_response = self.client.get(f"/workspace/users/{user_id}/saved-analyses")
+        self.assertEqual(200, list_saved_response.status_code)
+        self.assertEqual([], list_saved_response.json())
+
+        notes_response = self.client.get(
+            f"/workspace/users/{user_id}/saved-analyses/{analysis_id}/notes"
+        )
+        self.assertEqual(404, notes_response.status_code)

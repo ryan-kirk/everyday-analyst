@@ -23,6 +23,7 @@ from app.services.workspace_service import (
     create_saved_analysis,
     create_user,
     create_user_note,
+    delete_saved_analysis,
     delete_saved_analysis_note,
     get_saved_analysis_for_user,
     get_series_by_id,
@@ -267,6 +268,20 @@ def delete_workspace_note(
     )
     if not deleted:
         raise HTTPException(status_code=404, detail=f"note not found: {note_id}")
+
+
+@router.delete("/users/{user_id}/saved-analyses/{analysis_id}", status_code=204)
+def delete_workspace_saved_analysis(
+    user_id: int,
+    analysis_id: int,
+    db: Session = Depends(get_db),
+) -> None:
+    deleted = delete_saved_analysis(db=db, user_id=user_id, analysis_id=analysis_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=404,
+            detail=f"saved analysis not found: user_id={user_id}, analysis_id={analysis_id}",
+        )
 
 
 @router.get("/shared/{share_token}", response_model=SharedAnalysisRead)

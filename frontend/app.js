@@ -10,6 +10,8 @@ const state = {
 };
 
 const FRONTEND_DEV_PORTS = new Set(["3000", "4173", "5173", "5500", "5501", "5502"]);
+const ACTIVE_SAVED_VIEW_STORAGE_KEY_PREFIX = "ea_active_saved_view_user_";
+const DEFAULT_EVENT_CATEGORIES = ["fomc", "inflation", "labor", "growth", "housing"];
 const EVENT_COLORS_BY_CATEGORY = {
   fomc: "#7c3aed",
   inflation: "#be123c",
@@ -17,12 +19,24 @@ const EVENT_COLORS_BY_CATEGORY = {
   growth: "#0369a1",
   housing: "#a16207",
 };
+const EVENT_CATEGORY_LABELS = {
+  fomc: "FOMC",
+  inflation: "Inflation",
+  labor: "Labor",
+  growth: "Growth",
+  housing: "Housing",
+  market: "Market",
+  consumer: "Consumer",
+  population: "Population",
+};
 
 const elements = {
   seriesA: document.getElementById("seriesA"),
   seriesB: document.getElementById("seriesB"),
   presetSelect: document.getElementById("presetSelect"),
   presetDescription: document.getElementById("presetDescription"),
+  seriesASearch: document.getElementById("seriesASearch"),
+  seriesBSearch: document.getElementById("seriesBSearch"),
   eventCategory: document.getElementById("eventCategory"),
   startDate: document.getElementById("startDate"),
   endDate: document.getElementById("endDate"),
@@ -49,16 +63,15 @@ const elements = {
   saveViewBtn: document.getElementById("saveViewBtn"),
   bookmarkViewBtn: document.getElementById("bookmarkViewBtn"),
   shareViewBtn: document.getElementById("shareViewBtn"),
+  deleteViewBtn: document.getElementById("deleteViewBtn"),
   savedViewsSelect: document.getElementById("savedViewsSelect"),
   loadSavedViewBtn: document.getElementById("loadSavedViewBtn"),
-  refreshSavedViewsBtn: document.getElementById("refreshSavedViewsBtn"),
   shareNotesToggle: document.getElementById("shareNotesToggle"),
   workspaceStatus: document.getElementById("workspaceStatus"),
   shareLinkText: document.getElementById("shareLinkText"),
 
   noteInput: document.getElementById("noteInput"),
   saveNoteBtn: document.getElementById("saveNoteBtn"),
-  refreshNotesBtn: document.getElementById("refreshNotesBtn"),
   notesTableBody: document.getElementById("notesTableBody"),
 };
 
@@ -210,20 +223,91 @@ async function fetchJson(url, options = {}) {
 }
 
 function renderSeriesOptions() {
-  const optionsHtml = state.seriesList
+  const currentSeriesAId = elements.seriesA.value;
+  const currentSeriesBId = elements.seriesB.value;
+  const filteredForA = filterSeriesBySearch(elements.seriesASearch.value);
+  const filteredForB = filterSeriesBySearch(elements.seriesBSearch.value);
+
+  const defaultSeriesAId = state.seriesList[0] ? String(state.seriesList[0].id) : "";
+  const defaultSeriesBId = state.seriesList[1] ? String(state.seriesList[1].id) : defaultSeriesAId;
+
+  const selectedA = renderSeriesSelect(
+    elements.seriesA,
+    filteredForA,
+    currentSeriesAId,
+    defaultSeriesAId,
+  );
+  const fallbackB = defaultSeriesBId && defaultSeriesBId !== selectedA ? defaultSeriesBId : defaultSeriesAId;
+  let selectedB = renderSeriesSelect(elements.seriesB, filteredForB, currentSeriesBId, fallbackB);
+
+  if (selectedA && selectedB && selectedA === selectedB) {
+    const alternate =
+      filteredForB.find((series) => String(series.id) !== selectedA) ||
+      state.seriesList.find((series) => String(series.id) !== selectedA) ||
+      null;
+    if (alternate) {
+      selectedB = String(alternate.id);
+      elements.seriesB.value = selectedB;
+    }
+  }
+}
+
+function filterSeriesBySearch(rawQuery) {
+  const query = String(rawQuery || "").trim().toLowerCase();
+  if (!query) {
+    return state.seriesList;
+  }
+
+  return state.seriesList.filter((series) => {
+    const haystack = [
+      series.name || "",
+      series.source_series_id || "",
+      series.source || "",
+      series.category || "",
+      series.units || "",
+      series.frequency || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(query);
+  });
+}
+
+function renderSeriesSelect(selectElement, filteredSeries, currentValue, fallbackValue) {
+  const current = String(currentValue || "");
+  const currentSeries =
+    state.seriesList.find((series) => String(series.id) === current) || null;
+
+  let options = [...filteredSeries];
+  if (currentSeries && !options.some((series) => String(series.id) === current)) {
+    options = [currentSeries, ...options];
+  }
+
+  if (!options.length) {
+    selectElement.innerHTML = `<option value="">No matching series</option>`;
+    selectElement.value = "";
+    return "";
+  }
+
+  selectElement.innerHTML = options
     .map((series) => {
       const label = `${series.name} (${series.source_series_id})`;
-      return `<option value="${series.id}">${label}</option>`;
+      return `<option value="${series.id}">${escapeHtml(label)}</option>`;
     })
     .join("");
 
-  elements.seriesA.innerHTML = optionsHtml;
-  elements.seriesB.innerHTML = optionsHtml;
-
-  if (state.seriesList.length > 1) {
-    elements.seriesA.value = String(state.seriesList[0].id);
-    elements.seriesB.value = String(state.seriesList[1].id);
+  const fallback = String(fallbackValue || "");
+  if (currentSeries && options.some((series) => String(series.id) === current)) {
+    selectElement.value = current;
+    return current;
   }
+  if (fallback && options.some((series) => String(series.id) === fallback)) {
+    selectElement.value = fallback;
+    return fallback;
+  }
+  const firstId = String(options[0].id);
+  selectElement.value = firstId;
+  return firstId;
 }
 
 function renderPresetOptions() {
@@ -232,6 +316,33 @@ function renderPresetOptions() {
     ...state.presets.map((preset) => `<option value="${preset.id}">${preset.name}</option>`),
   ].join("");
   elements.presetSelect.innerHTML = optionsHtml;
+}
+
+function formatEventCategoryLabel(category) {
+  return EVENT_CATEGORY_LABELS[category] || category.charAt(0).toUpperCase() + category.slice(1);
+}
+
+function renderEventCategoryOptions(categories) {
+  const current = String(elements.eventCategory.value || "").trim().toLowerCase();
+  const normalized = Array.from(
+    new Set(
+      (categories || [])
+        .map((value) => String(value || "").trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  );
+  const options = normalized.length ? normalized : DEFAULT_EVENT_CATEGORIES;
+
+  elements.eventCategory.innerHTML = [
+    `<option value="">All</option>`,
+    ...options.map((category) => {
+      return `<option value="${escapeHtml(category)}">${escapeHtml(formatEventCategoryLabel(category))}</option>`;
+    }),
+  ].join("");
+
+  if (current && options.includes(current)) {
+    elements.eventCategory.value = current;
+  }
 }
 
 function renderSavedViewsOptions() {
@@ -248,10 +359,51 @@ function renderSavedViewsOptions() {
   elements.savedViewsSelect.innerHTML = [
     `<option value="">Select saved view...</option>`,
     ...state.savedViews.map(
-      (view) =>
-        `<option value="${view.id}">${escapeHtml(view.title)}${view.is_bookmarked ? " ★" : ""}</option>`,
+      (view) => `<option value="${view.id}">${escapeHtml(formatSavedViewOptionLabel(view))}</option>`,
     ),
   ].join("");
+}
+
+function formatSavedViewOptionLabel(view) {
+  const bookmarkFlag = view.is_bookmarked ? " ★" : "";
+  const createdDate = view.created_at?.slice?.(0, 10) ? formatDate(view.created_at.slice(0, 10)) : "n/a";
+  return `${view.title}${bookmarkFlag} (#${view.id}, ${createdDate})`;
+}
+
+function getSavedViewStorageKey(userId) {
+  return `${ACTIVE_SAVED_VIEW_STORAGE_KEY_PREFIX}${userId}`;
+}
+
+function persistActiveSavedViewId(viewId) {
+  if (!state.user) {
+    return;
+  }
+  try {
+    const key = getSavedViewStorageKey(state.user.id);
+    if (!viewId) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, String(viewId));
+  } catch (_error) {
+    // localStorage may be unavailable; continue without persistence.
+  }
+}
+
+function readPersistedActiveSavedViewId() {
+  if (!state.user) {
+    return null;
+  }
+  try {
+    const raw = localStorage.getItem(getSavedViewStorageKey(state.user.id));
+    if (!raw) {
+      return null;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  } catch (_error) {
+    return null;
+  }
 }
 
 async function loadSeries() {
@@ -281,6 +433,19 @@ async function loadPresets() {
   }
 }
 
+async function loadEventCategories() {
+  try {
+    const categories = await fetchJson(`${getApiBaseUrl()}/events/categories`);
+    if (Array.isArray(categories)) {
+      renderEventCategoryOptions(categories);
+      return;
+    }
+  } catch (_error) {
+    // fall through to defaults
+  }
+  renderEventCategoryOptions(DEFAULT_EVENT_CATEGORIES);
+}
+
 async function loadSavedViews() {
   if (!state.user) {
     state.savedViews = [];
@@ -294,15 +459,18 @@ async function loadSavedViews() {
     renderSavedViewsOptions();
 
     if (state.activeSavedAnalysis) {
-      const stillExists = views.some((view) => view.id === state.activeSavedAnalysis.id);
-      if (!stillExists) {
+      const matched = views.find((view) => view.id === state.activeSavedAnalysis.id);
+      if (!matched) {
         state.activeSavedAnalysis = null;
         state.activeNotes = [];
         renderNotesTable([]);
         selectSavedViewOption(null);
         elements.shareNotesToggle.checked = false;
+        setShareLinkText("");
       } else {
-        selectSavedViewOption(state.activeSavedAnalysis.id);
+        state.activeSavedAnalysis = matched;
+        selectSavedViewOption(matched.id);
+        elements.shareNotesToggle.checked = Boolean(matched.share_include_notes);
       }
     }
   } catch (error) {
@@ -868,6 +1036,45 @@ function clearWorkspaceSelectionContext() {
   updateWorkspaceUserLabel();
 }
 
+async function restoreActiveSavedViewAfterLogin() {
+  if (!state.user || !state.savedViews.length) {
+    state.activeSavedAnalysis = null;
+    state.activeNotes = [];
+    renderNotesTable(state.activeNotes);
+    selectSavedViewOption(null);
+    return;
+  }
+
+  const ownedActive = getActiveOwnedAnalysis();
+  if (ownedActive) {
+    selectSavedViewOption(ownedActive.id);
+    elements.shareNotesToggle.checked = Boolean(ownedActive.share_include_notes);
+    await refreshNotes();
+    return;
+  }
+
+  const persistedId = readPersistedActiveSavedViewId();
+  const preferredView =
+    state.savedViews.find((view) => view.id === persistedId) || state.savedViews[0] || null;
+  if (!preferredView) {
+    return;
+  }
+
+  state.activeSavedAnalysis = preferredView;
+  applySavedAnalysisToControls(preferredView);
+  selectSavedViewOption(preferredView.id);
+  elements.shareNotesToggle.checked = Boolean(preferredView.share_include_notes);
+  renderShareLinkFromToken(preferredView.share_token);
+  persistActiveSavedViewId(preferredView.id);
+  await refreshNotes();
+
+  try {
+    await loadComparison();
+  } catch (error) {
+    setStatus(`Loaded saved view but compare failed: ${error.message}`, true);
+  }
+}
+
 function requireLoggedIn(action) {
   if (state.user) {
     return true;
@@ -938,12 +1145,8 @@ async function loginUser() {
     elements.passwordInput.value = "";
     updateWorkspaceUserLabel();
     await loadSavedViews();
-
-    if (state.activeSavedAnalysis && state.activeSavedAnalysis.user_id === user.id) {
-      selectSavedViewOption(state.activeSavedAnalysis.id);
-      elements.shareNotesToggle.checked = Boolean(state.activeSavedAnalysis.share_include_notes);
-      await refreshNotes();
-    }
+    await restoreActiveSavedViewAfterLogin();
+    setWorkspaceStatus(`Logged in as ${user.username}.`);
   } catch (error) {
     setWorkspaceStatus(`Login failed: ${error.message}`, true);
   }
@@ -997,6 +1200,7 @@ async function saveView() {
     elements.shareNotesToggle.checked = Boolean(saved.share_include_notes);
     selectSavedViewOption(saved.id);
     renderShareLinkFromToken(saved.share_token);
+    persistActiveSavedViewId(saved.id);
     setWorkspaceStatus(`Saved view: ${saved.title}`);
     await loadSavedViews();
     await refreshNotes();
@@ -1029,11 +1233,52 @@ async function toggleBookmark() {
     );
     state.activeSavedAnalysis = updated;
     selectSavedViewOption(updated.id);
+    persistActiveSavedViewId(updated.id);
     const bookmarkText = updated.is_bookmarked ? "bookmarked" : "unbookmarked";
     setWorkspaceStatus(`View ${bookmarkText}.`);
     await loadSavedViews();
   } catch (error) {
     setWorkspaceStatus(`Bookmark update failed: ${error.message}`, true);
+  }
+}
+
+async function deleteView() {
+  if (!requireLoggedIn("deleting a saved view")) {
+    return;
+  }
+
+  const analysis = getActiveOwnedAnalysis();
+  if (!analysis) {
+    setWorkspaceStatus("Load one of your saved views before deleting.", true);
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Delete saved view "${analysis.title}"? This will also delete notes for this view.`,
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await fetchJson(
+      `${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses/${analysis.id}`,
+      { method: "DELETE" },
+    );
+
+    persistActiveSavedViewId(null);
+    state.activeSavedAnalysis = null;
+    state.activeNotes = [];
+    renderNotesTable(state.activeNotes);
+    selectSavedViewOption(null);
+    setShareLinkText("");
+    elements.shareNotesToggle.checked = false;
+
+    await loadSavedViews();
+    await restoreActiveSavedViewAfterLogin();
+    setWorkspaceStatus(`Deleted saved view: ${analysis.title}`);
+  } catch (error) {
+    setWorkspaceStatus(`Delete failed: ${error.message}`, true);
   }
 }
 
@@ -1176,6 +1421,7 @@ async function loadSavedViewById(viewId) {
   state.activeSavedAnalysis = view;
   applySavedAnalysisToControls(view);
   selectSavedViewOption(view.id);
+  persistActiveSavedViewId(view.id);
   renderShareLinkFromToken(view.share_token);
   await refreshNotes();
 
@@ -1211,6 +1457,7 @@ async function updateShareSettings() {
       },
     );
     state.activeSavedAnalysis = updated;
+    persistActiveSavedViewId(updated.id);
     await loadSavedViews();
     selectSavedViewOption(updated.id);
     setWorkspaceStatus(
@@ -1330,6 +1577,8 @@ async function handlePresetChange() {
 function wireEvents() {
   elements.compareBtn.addEventListener("click", handleRenderClick);
   elements.presetSelect.addEventListener("change", handlePresetChange);
+  elements.seriesASearch.addEventListener("input", renderSeriesOptions);
+  elements.seriesBSearch.addEventListener("input", renderSeriesOptions);
   elements.seriesA.addEventListener("change", clearWorkspaceSelectionContext);
   elements.seriesB.addEventListener("change", clearWorkspaceSelectionContext);
   elements.eventCategory.addEventListener("change", clearWorkspaceSelectionContext);
@@ -1342,13 +1591,19 @@ function wireEvents() {
   elements.saveViewBtn.addEventListener("click", saveView);
   elements.bookmarkViewBtn.addEventListener("click", toggleBookmark);
   elements.shareViewBtn.addEventListener("click", shareView);
+  elements.deleteViewBtn.addEventListener("click", deleteView);
   elements.loadSavedViewBtn.addEventListener("click", () => {
     loadSavedViewById(elements.savedViewsSelect.value);
   });
-  elements.refreshSavedViewsBtn.addEventListener("click", loadSavedViews);
+  elements.savedViewsSelect.addEventListener("change", () => {
+    const selectedId = elements.savedViewsSelect.value;
+    if (!selectedId) {
+      return;
+    }
+    loadSavedViewById(selectedId);
+  });
   elements.shareNotesToggle.addEventListener("change", updateShareSettings);
   elements.saveNoteBtn.addEventListener("click", saveNote);
-  elements.refreshNotesBtn.addEventListener("click", refreshNotes);
 
   elements.passwordInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
@@ -1368,6 +1623,7 @@ async function init() {
   try {
     await loadSeries();
     await loadPresets();
+    await loadEventCategories();
 
     const loadedShare = await loadSharedAnalysisFromQuery();
     if (!loadedShare) {

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.database import get_db
 from app.schemas.event import EventRead
-from app.services.event_service import list_events
+from app.services.event_service import list_event_categories, list_events
 
 router = APIRouter(prefix="/events", tags=["events"])
 
@@ -18,3 +18,8 @@ def get_events(
     db: Session = Depends(get_db),
 ) -> list[EventRead]:
     return list_events(db=db, start=start, end=end, category=category)
+
+
+@router.get("/categories", response_model=list[str])
+def get_event_categories(db: Session = Depends(get_db)) -> list[str]:
+    return list_event_categories(db=db)

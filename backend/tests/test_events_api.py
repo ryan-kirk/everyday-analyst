@@ -85,3 +85,8 @@ class TestEventsEndpoint(TestCase):
         self.assertEqual("Nonfarm Payroll Release", payload[0]["title"])
         self.assertEqual("2024-02-02", payload[0]["event_date"])
 
+    def test_event_categories_endpoint_returns_distinct_sorted_categories(self) -> None:
+        response = self.client.get("/events/categories")
+        self.assertEqual(200, response.status_code)
+        payload = response.json()
+        self.assertEqual(["fomc", "inflation", "labor"], payload)

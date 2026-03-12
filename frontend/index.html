@@ -112,7 +112,7 @@
       }
 
       .workspace-actions {
-        grid-template-columns: 1.6fr 1fr 1fr 1fr;
+        grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
       }
 
       .hidden {
@@ -144,7 +144,7 @@
 
       .saved-views-controls {
         display: grid;
-        grid-template-columns: 1.8fr 1fr 1fr;
+        grid-template-columns: 1.8fr 1fr;
         gap: 0.55rem;
         align-items: end;
       }
@@ -183,6 +183,10 @@
         font: inherit;
       }
 
+      .compare-grid input[type="text"] {
+        margin-bottom: 0.35rem;
+      }
+
       button {
         background: linear-gradient(120deg, var(--accent-a), #1f7a95);
         color: #fff;
@@ -208,6 +212,17 @@
 
       .muted-btn:hover {
         background: #e5ecf1;
+        filter: none;
+      }
+
+      .danger-btn {
+        background: #fef2f2;
+        color: #991b1b;
+        border-color: #fecaca;
+      }
+
+      .danger-btn:hover {
+        background: #fee2e2;
         filter: none;
       }
 
@@ -505,11 +520,13 @@
 
           <div>
             <label for="seriesA">Series A</label>
+            <input id="seriesASearch" type="text" placeholder="Search series A..." />
             <select id="seriesA"></select>
           </div>
 
           <div>
             <label for="seriesB">Series B</label>
+            <input id="seriesBSearch" type="text" placeholder="Search series B..." />
             <select id="seriesB"></select>
           </div>
 
@@ -581,6 +598,10 @@
                 <label>&nbsp;</label>
                 <button id="shareViewBtn" type="button" class="muted-btn">Share</button>
               </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="deleteViewBtn" type="button" class="danger-btn">Delete</button>
+              </div>
             </div>
             <div class="saved-views-row">
               <label for="savedViewsSelect">Saved Views</label>
@@ -589,7 +610,6 @@
                   <option value="">No saved views yet</option>
                 </select>
                 <button id="loadSavedViewBtn" type="button" class="muted-btn">Load</button>
-                <button id="refreshSavedViewsBtn" type="button" class="muted-btn">Refresh</button>
               </div>
               <label class="share-notes-toggle">
                 <input id="shareNotesToggle" type="checkbox" />
@@ -628,7 +648,6 @@
         ></textarea>
         <div class="notes-actions">
           <button id="saveNoteBtn" type="button">Save Note</button>
-          <button id="refreshNotesBtn" type="button" class="muted-btn">Refresh Notes</button>
         </div>
         <div class="table-wrap">
           <table class="events-table">
