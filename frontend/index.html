@@ -62,11 +62,88 @@
       }
 
       .controls {
-        display: grid;
-        grid-template-columns: repeat(7, minmax(0, 1fr));
-        gap: 0.8rem;
         padding: 1rem;
         margin-bottom: 1rem;
+      }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 0.75rem;
+        align-items: end;
+      }
+
+      .workspace-grid {
+        margin-top: 0.9rem;
+        padding-top: 0.9rem;
+        border-top: 1px dashed var(--line);
+        display: grid;
+        grid-template-columns: 1.5fr 2fr;
+        gap: 0.8rem;
+        align-items: end;
+      }
+
+      .workspace-auth,
+      .workspace-actions {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.6rem;
+        align-items: end;
+      }
+
+      .workspace-auth {
+        grid-template-columns: 1.1fr 1.1fr 1fr 1fr;
+      }
+
+      .workspace-actions {
+        grid-template-columns: 1.6fr 1fr 1fr 1fr;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .logged-in-controls {
+        display: flex;
+        align-items: center;
+        gap: 0.65rem;
+      }
+
+      .workspace-user-pill {
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.35rem;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: #eef3f6;
+        color: #2b3a4e;
+        padding: 0.45rem 0.75rem;
+        font-size: 0.92rem;
+        font-weight: 700;
+      }
+
+      .saved-views-row {
+        margin-top: 0.6rem;
+      }
+
+      .saved-views-controls {
+        display: grid;
+        grid-template-columns: 1.8fr 1fr 1fr;
+        gap: 0.55rem;
+        align-items: end;
+      }
+
+      .share-notes-toggle {
+        margin-top: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        color: #3f556a;
+        font-size: 0.87rem;
+      }
+
+      .share-notes-toggle input {
+        width: auto;
       }
 
       label {
@@ -96,11 +173,40 @@
         border-color: transparent;
         font-weight: 700;
         cursor: pointer;
-        margin-top: 1.35rem;
+        margin-top: 0;
       }
 
       button:hover {
         filter: brightness(1.04);
+      }
+
+      .compare-btn {
+        height: 100%;
+      }
+
+      .muted-btn {
+        background: #eef3f6;
+        color: #2b3a4e;
+        border-color: #cdd5de;
+      }
+
+      .muted-btn:hover {
+        background: #e5ecf1;
+        filter: none;
+      }
+
+      .workspace-status {
+        margin-top: 0.45rem;
+        font-size: 0.9rem;
+        color: #3e4f61;
+        min-height: 1.3rem;
+      }
+
+      .share-link {
+        margin-top: 0.25rem;
+        font-size: 0.87rem;
+        color: #35516d;
+        word-break: break-all;
       }
 
       .status {
@@ -223,6 +329,21 @@
         line-height: 1.35;
       }
 
+      .series-context-link {
+        margin-top: 0.25rem;
+        font-size: 0.86rem;
+      }
+
+      .series-context-link a {
+        color: #0a5d78;
+        text-decoration: none;
+        border-bottom: 1px dotted currentColor;
+      }
+
+      .series-context-link a:hover {
+        color: #084c62;
+      }
+
       .insight-list {
         margin: 0;
         padding-left: 1.1rem;
@@ -245,6 +366,29 @@
 
       .table-wrap {
         overflow-x: auto;
+      }
+
+      .note-input {
+        width: 100%;
+        min-height: 110px;
+        resize: vertical;
+      }
+
+      .notes-actions {
+        display: flex;
+        gap: 0.6rem;
+        margin: 0.6rem 0 0.8rem;
+      }
+
+      .notes-actions button {
+        width: auto;
+        padding: 0.55rem 0.9rem;
+      }
+
+      .notes-delete-btn {
+        width: auto;
+        padding: 0.35rem 0.6rem;
+        font-size: 0.8rem;
       }
 
       .events-table {
@@ -277,12 +421,26 @@
       }
 
       @media (max-width: 900px) {
-        .controls {
+        .compare-grid {
           grid-template-columns: 1fr 1fr;
         }
 
-        .controls .span-2 {
-          grid-column: span 2;
+        .workspace-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .workspace-auth,
+        .workspace-actions {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .saved-views-controls {
+          grid-template-columns: 1fr;
+        }
+
+        .logged-in-controls {
+          flex-direction: column;
+          align-items: stretch;
         }
 
         .insights-meta {
@@ -301,52 +459,113 @@
       <p class="subtitle">Compare two public time series on a shared timeline.</p>
 
       <section class="card controls">
-        <div class="span-2">
-          <label for="apiBaseUrl">API Base URL</label>
-          <input id="apiBaseUrl" value="" />
+        <div class="compare-grid">
+          <div>
+            <label for="presetSelect">Preset Workflow</label>
+            <select id="presetSelect">
+              <option value="">Custom</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="seriesA">Series A</label>
+            <select id="seriesA"></select>
+          </div>
+
+          <div>
+            <label for="seriesB">Series B</label>
+            <select id="seriesB"></select>
+          </div>
+
+          <div>
+            <label for="eventCategory">Event Category</label>
+            <select id="eventCategory">
+              <option value="">All</option>
+              <option value="fomc">FOMC</option>
+              <option value="inflation">Inflation</option>
+              <option value="labor">Labor</option>
+              <option value="growth">Growth</option>
+              <option value="housing">Housing</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="startDate">Start</label>
+            <input id="startDate" type="date" />
+          </div>
+
+          <div>
+            <label for="endDate">End</label>
+            <input id="endDate" type="date" />
+          </div>
+        </div>
+
+        <div class="workspace-grid">
+          <div>
+            <div id="authFormControls" class="workspace-auth">
+              <div id="usernameField">
+                <label for="usernameInput">Username</label>
+                <input id="usernameInput" autocomplete="username" />
+              </div>
+              <div id="passwordField">
+                <label for="passwordInput">Password</label>
+                <input id="passwordInput" type="password" autocomplete="current-password" />
+              </div>
+              <div id="loginButtonWrap">
+                <label>&nbsp;</label>
+                <button id="loginBtn" type="button">Log In</button>
+              </div>
+              <div id="registerButtonWrap">
+                <label>&nbsp;</label>
+                <button id="registerBtn" type="button" class="muted-btn">Register</button>
+              </div>
+            </div>
+            <div id="loggedInControls" class="logged-in-controls hidden">
+              <div id="workspaceUserLabel" class="workspace-user-pill"></div>
+              <button id="logoutBtn" type="button" class="muted-btn">Log Out</button>
+            </div>
+            <p id="workspaceStatus" class="workspace-status">Not logged in.</p>
+          </div>
+
+          <div>
+            <div class="workspace-actions">
+              <div>
+                <label for="analysisTitleInput">Save View As</label>
+                <input id="analysisTitleInput" placeholder="e.g. Fed Watch - weekly review" />
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="saveViewBtn" type="button">Save View</button>
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="bookmarkViewBtn" type="button" class="muted-btn">Bookmark</button>
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="shareViewBtn" type="button" class="muted-btn">Share</button>
+              </div>
+            </div>
+            <div class="saved-views-row">
+              <label for="savedViewsSelect">Saved Views</label>
+              <div class="saved-views-controls">
+                <select id="savedViewsSelect">
+                  <option value="">No saved views yet</option>
+                </select>
+                <button id="loadSavedViewBtn" type="button" class="muted-btn">Load</button>
+                <button id="refreshSavedViewsBtn" type="button" class="muted-btn">Refresh</button>
+              </div>
+              <label class="share-notes-toggle">
+                <input id="shareNotesToggle" type="checkbox" />
+                Include notes in shared links
+              </label>
+            </div>
+            <p id="shareLinkText" class="share-link"></p>
+          </div>
         </div>
 
         <div>
-          <label for="presetSelect">Preset Workflow</label>
-          <select id="presetSelect">
-            <option value="">Custom</option>
-          </select>
-        </div>
-
-        <div>
-          <label for="seriesA">Series A</label>
-          <select id="seriesA"></select>
-        </div>
-
-        <div>
-          <label for="seriesB">Series B</label>
-          <select id="seriesB"></select>
-        </div>
-
-        <div>
-          <label for="eventCategory">Event Category</label>
-          <select id="eventCategory">
-            <option value="">All</option>
-            <option value="fomc">FOMC</option>
-            <option value="inflation">Inflation</option>
-            <option value="labor">Labor</option>
-            <option value="growth">Growth</option>
-            <option value="housing">Housing</option>
-          </select>
-        </div>
-
-        <div>
-          <label for="startDate">Start</label>
-          <input id="startDate" type="date" />
-        </div>
-
-        <div>
-          <label for="endDate">End</label>
-          <input id="endDate" type="date" />
-        </div>
-
-        <div class="span-2">
-          <button id="compareBtn" type="button">Render Comparison</button>
+          <button id="compareBtn" type="button" class="compare-btn">Render Comparison</button>
         </div>
       </section>
 
@@ -358,6 +577,41 @@
 
       <section class="card chart-wrap">
         <canvas id="compareChart" aria-label="Comparison chart"></canvas>
+      </section>
+
+      <section class="card panel">
+        <h2>Workspace Notes</h2>
+        <p class="panel-intro">
+          Save notes against your current saved view. Notes help track interpretation changes and
+          event context over time.
+        </p>
+        <textarea
+          id="noteInput"
+          class="note-input"
+          placeholder="Add your note for this saved analysis..."
+        ></textarea>
+        <div class="notes-actions">
+          <button id="saveNoteBtn" type="button">Save Note</button>
+          <button id="refreshNotesBtn" type="button" class="muted-btn">Refresh Notes</button>
+        </div>
+        <div class="table-wrap">
+          <table class="events-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Note</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="notesTableBody">
+              <tr>
+                <td colspan="3" class="empty-note">
+                  Log in and save a view to start storing notes.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section class="card panel">

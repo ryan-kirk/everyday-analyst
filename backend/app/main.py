@@ -11,9 +11,14 @@ from app.api.health import router as health_router
 from app.api.insights import router as insights_router
 from app.api.presets import router as presets_router
 from app.api.series import router as series_router
+from app.api.workspace import router as workspace_router
 from app.db.base import Base
 from app.db.database import engine
-from app.db.schema_utils import ensure_event_columns
+from app.db.schema_utils import (
+    ensure_event_columns,
+    ensure_saved_analysis_columns,
+    ensure_workspace_user_columns,
+)
 from app import models  # noqa: F401  # Ensures model metadata is registered.
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
@@ -23,6 +28,8 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 async def lifespan(_: FastAPI):
     Base.metadata.create_all(bind=engine)
     ensure_event_columns(engine)
+    ensure_workspace_user_columns(engine)
+    ensure_saved_analysis_columns(engine)
     yield
 
 
@@ -47,6 +54,7 @@ app.include_router(events_router)
 app.include_router(compare_router)
 app.include_router(insights_router)
 app.include_router(presets_router)
+app.include_router(workspace_router)
 
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

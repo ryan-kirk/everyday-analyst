@@ -33,6 +33,7 @@ class InsightsResponse(BaseModel):
     series_a_points: int
     series_b_points: int
     overlap_points: int
+    overlap_method: str
     correlation: float | None
     inflection_points: list[InsightInflectionPoint]
     major_movements: list[InsightMajorMovement]

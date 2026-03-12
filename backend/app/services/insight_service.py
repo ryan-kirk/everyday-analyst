@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from datetime import date, timedelta
 from math import sqrt
@@ -48,18 +49,16 @@ def generate_insights(
 
     points_a = [_SeriesPoint(date=row.date, value=row.value_a) for row in aligned if row.value_a is not None]
     points_b = [_SeriesPoint(date=row.date, value=row.value_b) for row in aligned if row.value_b is not None]
-    overlap_pairs = [
-        (row.value_a, row.value_b)
-        for row in aligned
-        if row.value_a is not None and row.value_b is not None
-    ]
+    overlap_pairs, overlap_method = _build_overlap_pairs(points_a, points_b)
 
     correlation = _calculate_pearson(overlap_pairs)
-    inflections = _detect_inflections(points_a, "a", events) + _detect_inflections(points_b, "b", events)
+    inflections = _detect_inflections(points_a, series_a.name, events) + _detect_inflections(
+        points_b, series_b.name, events
+    )
     inflections.sort(key=lambda row: row.date)
 
-    major_moves = _detect_major_movements(points_a, "a", events) + _detect_major_movements(
-        points_b, "b", events
+    major_moves = _detect_major_movements(points_a, series_a.name, events) + _detect_major_movements(
+        points_b, series_b.name, events
     )
     major_moves.sort(key=lambda row: row.end_date)
 
@@ -70,6 +69,7 @@ def generate_insights(
         end=effective_end,
         aligned_points=len(aligned),
         overlap_points=len(overlap_pairs),
+        overlap_method=overlap_method,
         correlation=correlation,
         inflections=inflections,
         major_moves=major_moves,
@@ -84,6 +84,7 @@ def generate_insights(
         series_a_points=len(points_a),
         series_b_points=len(points_b),
         overlap_points=len(overlap_pairs),
+        overlap_method=overlap_method,
         correlation=correlation,
         inflection_points=inflections,
         major_movements=major_moves,
@@ -110,9 +111,77 @@ def _calculate_pearson(pairs: list[tuple[float, float]]) -> float | None:
     return numerator / denominator
 
 
+def _build_overlap_pairs(
+    points_a: list[_SeriesPoint],
+    points_b: list[_SeriesPoint],
+) -> tuple[list[tuple[float, float]], str]:
+    if not points_a or not points_b:
+        return [], "none"
+
+    values_b_by_date = {point.date: point.value for point in points_b}
+    exact_pairs = [
+        (point.value, values_b_by_date[point.date]) for point in points_a if point.date in values_b_by_date
+    ]
+
+    min_reasonable_exact = max(12, min(len(points_a), len(points_b)) // 4)
+    if len(exact_pairs) >= min_reasonable_exact:
+        return exact_pairs, "exact_date"
+
+    nearest_pairs = _build_nearest_date_pairs(points_a, points_b, max_gap_days=21)
+    if len(nearest_pairs) > len(exact_pairs):
+        return nearest_pairs, "nearest_date_21d"
+    return exact_pairs, "exact_date"
+
+
+def _build_nearest_date_pairs(
+    points_a: list[_SeriesPoint],
+    points_b: list[_SeriesPoint],
+    *,
+    max_gap_days: int,
+) -> list[tuple[float, float]]:
+    if not points_a or not points_b:
+        return []
+
+    primary_is_a = len(points_a) <= len(points_b)
+    primary = points_a if primary_is_a else points_b
+    secondary = points_b if primary_is_a else points_a
+    secondary_dates = [point.date for point in secondary]
+
+    used_secondary_indices: set[int] = set()
+    pairs: list[tuple[float, float]] = []
+
+    for primary_point in primary:
+        center = bisect_left(secondary_dates, primary_point.date)
+        window_start = max(0, center - 2)
+        window_end = min(len(secondary), center + 3)
+        candidates = list(range(window_start, window_end))
+        candidates.sort(key=lambda idx: abs((secondary[idx].date - primary_point.date).days))
+
+        chosen_index: int | None = None
+        for idx in candidates:
+            if idx in used_secondary_indices:
+                continue
+            if abs((secondary[idx].date - primary_point.date).days) > max_gap_days:
+                continue
+            chosen_index = idx
+            break
+
+        if chosen_index is None:
+            continue
+
+        used_secondary_indices.add(chosen_index)
+        secondary_point = secondary[chosen_index]
+        if primary_is_a:
+            pairs.append((primary_point.value, secondary_point.value))
+        else:
+            pairs.append((secondary_point.value, primary_point.value))
+
+    return pairs
+
+
 def _detect_inflections(
     points: list[_SeriesPoint],
-    series_key: str,
+    series_name: str,
     events: list[Event],
     max_points: int = 6,
 ) -> list[InsightInflectionPoint]:
@@ -135,7 +204,7 @@ def _detect_inflections(
 
         inflection = InsightInflectionPoint(
             date=points[index].date,
-            series=series_key,
+            series=series_name,
             direction=direction,
             delta=curr_delta,
             nearby_events=_nearby_events(events, points[index].date),
@@ -150,7 +219,7 @@ def _detect_inflections(
 
 def _detect_major_movements(
     points: list[_SeriesPoint],
-    series_key: str,
+    series_name: str,
     events: list[Event],
     max_moves: int = 4,
 ) -> list[InsightMajorMovement]:
@@ -173,7 +242,7 @@ def _detect_major_movements(
             continue
 
         movement = InsightMajorMovement(
-            series=series_key,
+            series=series_name,
             start_date=prev_point.date,
             end_date=curr_point.date,
             change=change,
@@ -210,6 +279,7 @@ def _build_narrative_summary(
     end: date | None,
     aligned_points: int,
     overlap_points: int,
+    overlap_method: str,
     correlation: float | None,
     inflections: list[InsightInflectionPoint],
     major_moves: list[InsightMajorMovement],
@@ -222,10 +292,17 @@ def _build_narrative_summary(
     elif end:
         range_text = f"up to {end.isoformat()}"
 
+    if overlap_method == "nearest_date_21d":
+        overlap_note = " using nearest-date matching (up to 21 days) to adjust for different reporting frequencies."
+    elif overlap_method == "exact_date":
+        overlap_note = " using exact same-day observations."
+    else:
+        overlap_note = "."
+
     parts = [
         (
             f"Across {range_text}, {series_a.name} and {series_b.name} produced "
-            f"{aligned_points} aligned dates with {overlap_points} overlapping values."
+            f"{aligned_points} aligned dates with {overlap_points} overlapping values{overlap_note}"
         )
     ]
 
@@ -246,7 +323,7 @@ def _build_narrative_summary(
         else:
             move_text = f"{strongest.change:.3f} units"
         parts.append(
-            f"The largest one-step move was series {strongest.series.upper()} "
+            f"The largest one-step move was in {strongest.series} "
             f"from {strongest.start_date.isoformat()} to {strongest.end_date.isoformat()} "
             f"({move_text}, {strongest.direction})."
         )
@@ -257,7 +334,7 @@ def _build_narrative_summary(
         first = inflections[0]
         parts.append(
             f"Detected {len(inflections)} inflection points; the earliest notable shift is "
-            f"a {first.direction} in series {first.series.upper()} on {first.date.isoformat()}."
+            f"a {first.direction} in {first.series} on {first.date.isoformat()}."
         )
     else:
         parts.append("No major movements or inflection points were detected with the current thresholds.")

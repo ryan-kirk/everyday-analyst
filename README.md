@@ -156,6 +156,7 @@ Example compare response shape:
 ### `GET /insights?series_a=&series_b=&start=&end=`
 - Returns deterministic analysis for two series over a date window:
   - aligned and overlap stats
+  - overlap method (`exact_date` or nearest-date matching for mixed frequencies)
   - correlation on overlapping values
   - detected inflection points
   - major one-step movements
@@ -477,3 +478,5 @@ Key constraints relevant to this app:
 - Add more tests for modules and edge-case ingestion failures.
 - Add weekly, monthly type views 
 - Add richer metadata and explanatory insights per series.
+- Add links to meta-data (eg. Fed meeting notes), if possible, into the insights panel. 
+- Require users to have a valid email. Store email and ensure TOS enables use for newsletters/notifications. 

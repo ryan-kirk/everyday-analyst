@@ -130,6 +130,7 @@ class TestInsightsEndpoint(TestCase):
         self.assertEqual(6, payload["series_a_points"])
         self.assertEqual(6, payload["series_b_points"])
         self.assertEqual(6, payload["overlap_points"])
+        self.assertIn(payload["overlap_method"], {"exact_date", "nearest_date_21d"})
         self.assertIsNotNone(payload["correlation"])
         self.assertGreater(len(payload["inflection_points"]), 0)
         self.assertGreater(len(payload["major_movements"]), 0)

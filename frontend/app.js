@@ -2,6 +2,11 @@ const state = {
   chart: null,
   seriesList: [],
   presets: [],
+  apiBaseUrl: null,
+  user: null,
+  activeSavedAnalysis: null,
+  activeNotes: [],
+  savedViews: [],
 };
 
 const FRONTEND_DEV_PORTS = new Set(["3000", "4173", "5173", "5500", "5501", "5502"]);
@@ -14,7 +19,6 @@ const EVENT_COLORS_BY_CATEGORY = {
 };
 
 const elements = {
-  apiBaseUrl: document.getElementById("apiBaseUrl"),
   seriesA: document.getElementById("seriesA"),
   seriesB: document.getElementById("seriesB"),
   presetSelect: document.getElementById("presetSelect"),
@@ -32,6 +36,30 @@ const elements = {
   inflectionPoints: document.getElementById("inflectionPoints"),
   majorMovements: document.getElementById("majorMovements"),
   eventsTableBody: document.getElementById("eventsTableBody"),
+
+  usernameInput: document.getElementById("usernameInput"),
+  passwordInput: document.getElementById("passwordInput"),
+  loginBtn: document.getElementById("loginBtn"),
+  registerBtn: document.getElementById("registerBtn"),
+  logoutBtn: document.getElementById("logoutBtn"),
+  authFormControls: document.getElementById("authFormControls"),
+  loggedInControls: document.getElementById("loggedInControls"),
+  workspaceUserLabel: document.getElementById("workspaceUserLabel"),
+  analysisTitleInput: document.getElementById("analysisTitleInput"),
+  saveViewBtn: document.getElementById("saveViewBtn"),
+  bookmarkViewBtn: document.getElementById("bookmarkViewBtn"),
+  shareViewBtn: document.getElementById("shareViewBtn"),
+  savedViewsSelect: document.getElementById("savedViewsSelect"),
+  loadSavedViewBtn: document.getElementById("loadSavedViewBtn"),
+  refreshSavedViewsBtn: document.getElementById("refreshSavedViewsBtn"),
+  shareNotesToggle: document.getElementById("shareNotesToggle"),
+  workspaceStatus: document.getElementById("workspaceStatus"),
+  shareLinkText: document.getElementById("shareLinkText"),
+
+  noteInput: document.getElementById("noteInput"),
+  saveNoteBtn: document.getElementById("saveNoteBtn"),
+  refreshNotesBtn: document.getElementById("refreshNotesBtn"),
+  notesTableBody: document.getElementById("notesTableBody"),
 };
 
 const eventLinesPlugin = {
@@ -68,6 +96,21 @@ const eventLinesPlugin = {
   },
 };
 
+function inferApiBaseUrl() {
+  const currentUrl = new URL(window.location.href);
+  if (FRONTEND_DEV_PORTS.has(currentUrl.port)) {
+    return `${currentUrl.protocol}//${currentUrl.hostname}:8000`;
+  }
+  return currentUrl.origin;
+}
+
+function getApiBaseUrl() {
+  if (!state.apiBaseUrl) {
+    state.apiBaseUrl = inferApiBaseUrl();
+  }
+  return state.apiBaseUrl;
+}
+
 function setDefaultDates() {
   const today = new Date();
   const oneYearBack = new Date(today);
@@ -82,31 +125,13 @@ function setStatus(message, isError = false) {
   elements.status.style.color = isError ? "#9f1239" : "#3e4f61";
 }
 
-function inferApiBaseUrl() {
-  const currentUrl = new URL(window.location.href);
-  if (FRONTEND_DEV_PORTS.has(currentUrl.port)) {
-    return `${currentUrl.protocol}//${currentUrl.hostname}:8000`;
-  }
-  return currentUrl.origin;
+function setWorkspaceStatus(message, isError = false) {
+  elements.workspaceStatus.textContent = message;
+  elements.workspaceStatus.style.color = isError ? "#9f1239" : "#3e4f61";
 }
 
-function normalizeBaseUrl(url) {
-  const trimmed = url.trim().replace(/\/+$/, "");
-  if (!trimmed) {
-    return "";
-  }
-  if (/^https?:\/\//i.test(trimmed)) {
-    return trimmed;
-  }
-  return `${window.location.protocol}//${trimmed}`;
-}
-
-function getApiBaseUrl() {
-  const explicit = normalizeBaseUrl(elements.apiBaseUrl.value);
-  if (explicit) {
-    return explicit;
-  }
-  return inferApiBaseUrl();
+function setShareLinkText(text = "") {
+  elements.shareLinkText.textContent = text;
 }
 
 function formatDate(isoDate) {
@@ -146,6 +171,44 @@ function escapeHtml(raw) {
     .replaceAll("'", "&#39;");
 }
 
+async function fetchJson(url, options = {}) {
+  const requestOptions = { ...options };
+
+  if (requestOptions.body && typeof requestOptions.body !== "string") {
+    requestOptions.headers = {
+      "Content-Type": "application/json",
+      ...(requestOptions.headers || {}),
+    };
+    requestOptions.body = JSON.stringify(requestOptions.body);
+  }
+
+  const response = await fetch(url, requestOptions);
+  const contentType = response.headers.get("content-type") || "";
+
+  if (!response.ok) {
+    let messageBody = await response.text();
+    if (contentType.includes("application/json")) {
+      try {
+        const parsed = JSON.parse(messageBody);
+        if (parsed && typeof parsed === "object" && parsed.detail) {
+          messageBody = String(parsed.detail);
+        }
+      } catch (_error) {
+        // keep raw body
+      }
+    } else if (contentType.includes("text/html")) {
+      messageBody = "expected JSON but got HTML (verify backend server and CORS).";
+    }
+
+    throw new Error(`${response.status} ${response.statusText}: ${messageBody}`);
+  }
+
+  if (!contentType.includes("application/json")) {
+    return null;
+  }
+  return response.json();
+}
+
 function renderSeriesOptions() {
   const optionsHtml = state.seriesList
     .map((series) => {
@@ -163,10 +226,6 @@ function renderSeriesOptions() {
   }
 }
 
-function buildPresetsUrl() {
-  return `${getApiBaseUrl()}/presets`;
-}
-
 function renderPresetOptions() {
   const optionsHtml = [
     `<option value="">Custom</option>`,
@@ -175,9 +234,44 @@ function renderPresetOptions() {
   elements.presetSelect.innerHTML = optionsHtml;
 }
 
+function renderSavedViewsOptions() {
+  if (!state.user) {
+    elements.savedViewsSelect.innerHTML = `<option value="">Log in to view saved analyses</option>`;
+    return;
+  }
+
+  if (!state.savedViews.length) {
+    elements.savedViewsSelect.innerHTML = `<option value="">No saved views yet</option>`;
+    return;
+  }
+
+  elements.savedViewsSelect.innerHTML = [
+    `<option value="">Select saved view...</option>`,
+    ...state.savedViews.map(
+      (view) =>
+        `<option value="${view.id}">${escapeHtml(view.title)}${view.is_bookmarked ? " ★" : ""}</option>`,
+    ),
+  ].join("");
+}
+
+async function loadSeries() {
+  setStatus("Loading available series...");
+
+  const series = await fetchJson(`${getApiBaseUrl()}/series`);
+  state.seriesList = series;
+
+  if (!state.seriesList.length) {
+    setStatus("No series found. Load data first, then refresh.", true);
+    return;
+  }
+
+  renderSeriesOptions();
+  setStatus(`Loaded ${state.seriesList.length} series.`);
+}
+
 async function loadPresets() {
   try {
-    const presets = await fetchJson(buildPresetsUrl());
+    const presets = await fetchJson(`${getApiBaseUrl()}/presets`);
     state.presets = presets;
     renderPresetOptions();
   } catch (_error) {
@@ -187,9 +281,54 @@ async function loadPresets() {
   }
 }
 
+async function loadSavedViews() {
+  if (!state.user) {
+    state.savedViews = [];
+    renderSavedViewsOptions();
+    return;
+  }
+
+  try {
+    const views = await fetchJson(`${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses`);
+    state.savedViews = views;
+    renderSavedViewsOptions();
+
+    if (state.activeSavedAnalysis) {
+      const stillExists = views.some((view) => view.id === state.activeSavedAnalysis.id);
+      if (!stillExists) {
+        state.activeSavedAnalysis = null;
+        state.activeNotes = [];
+        renderNotesTable([]);
+        selectSavedViewOption(null);
+        elements.shareNotesToggle.checked = false;
+      } else {
+        selectSavedViewOption(state.activeSavedAnalysis.id);
+      }
+    }
+  } catch (error) {
+    setWorkspaceStatus(`Failed to load saved views: ${error.message}`, true);
+  }
+}
+
 function resolveSeriesIdBySourceId(sourceSeriesId) {
   const series = state.seriesList.find((item) => item.source_series_id === sourceSeriesId);
   return series ? String(series.id) : null;
+}
+
+function buildSeriesInfoLink(series) {
+  const source = String(series.source || "").toLowerCase();
+  const sourceSeriesId = String(series.source_series_id || "").trim();
+  if (!sourceSeriesId) {
+    return null;
+  }
+
+  if (source === "fred") {
+    return `https://fred.stlouisfed.org/series/${encodeURIComponent(sourceSeriesId)}`;
+  }
+  if (source === "bls") {
+    return `https://data.bls.gov/timeseries/${encodeURIComponent(sourceSeriesId)}`;
+  }
+  return null;
 }
 
 function applyRecommendedDateRange(rangeSpec) {
@@ -247,39 +386,7 @@ function applyPreset(preset) {
   elements.presetDescription.textContent = `${preset.name}: ${preset.description} Recommended range: ${preset.recommended_date_range}.`;
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url);
-  if (!response.ok) {
-    const contentType = response.headers.get("content-type") || "";
-    const body = await response.text();
-    if (contentType.includes("text/html")) {
-      throw new Error(
-        `${response.status} ${response.statusText}: expected JSON but got HTML. Verify API base URL: ${getApiBaseUrl()}`,
-      );
-    }
-    throw new Error(`${response.status} ${response.statusText}: ${body}`);
-  }
-  return response.json();
-}
-
-async function loadSeries() {
-  const apiBaseUrl = getApiBaseUrl();
-  setStatus("Loading available series...");
-
-  const series = await fetchJson(`${apiBaseUrl}/series`);
-  state.seriesList = series;
-
-  if (!state.seriesList.length) {
-    setStatus("No series found. Load data first, then refresh.", true);
-    return;
-  }
-
-  renderSeriesOptions();
-  setStatus(`Loaded ${state.seriesList.length} series.`);
-}
-
 function buildCompareUrl() {
-  const apiBaseUrl = getApiBaseUrl();
   const params = new URLSearchParams({
     series_a: elements.seriesA.value,
     series_b: elements.seriesB.value,
@@ -290,18 +397,17 @@ function buildCompareUrl() {
   if (eventCategory) {
     params.append("event_category", eventCategory);
   }
-  return `${apiBaseUrl}/compare?${params.toString()}`;
+  return `${getApiBaseUrl()}/compare?${params.toString()}`;
 }
 
 function buildInsightsUrl() {
-  const apiBaseUrl = getApiBaseUrl();
   const params = new URLSearchParams({
     series_a: elements.seriesA.value,
     series_b: elements.seriesB.value,
     start: elements.startDate.value,
     end: elements.endDate.value,
   });
-  return `${apiBaseUrl}/insights?${params.toString()}`;
+  return `${getApiBaseUrl()}/insights?${params.toString()}`;
 }
 
 function renderChart(comparePayload) {
@@ -353,7 +459,7 @@ function renderChart(comparePayload) {
           borderWidth: 2,
           pointRadius: isSparseA ? 3 : 0,
           pointHoverRadius: isSparseA ? 5 : 3,
-          spanGaps: isSparseA,
+          spanGaps: true,
           tension: 0.2,
         },
         {
@@ -365,7 +471,7 @@ function renderChart(comparePayload) {
           borderWidth: 2,
           pointRadius: isSparseB ? 3 : 0,
           pointHoverRadius: isSparseB ? 5 : 3,
-          spanGaps: isSparseB,
+          spanGaps: true,
           tension: 0.2,
         },
         {
@@ -475,6 +581,7 @@ function renderInsightsMeta(insightsPayload) {
     ["Series A Points", formatNumber(insightsPayload.series_a_points, 0)],
     ["Series B Points", formatNumber(insightsPayload.series_b_points, 0)],
     ["Overlap Points", formatNumber(insightsPayload.overlap_points, 0)],
+    ["Overlap Method", insightsPayload.overlap_method || "n/a"],
     ["Correlation", correlation],
     ["Inflections", formatNumber(insightsPayload.inflection_points.length, 0)],
     ["Major Moves", formatNumber(insightsPayload.major_movements.length, 0)],
@@ -496,6 +603,7 @@ function renderSeriesContext(insightsPayload) {
 
   elements.seriesContext.innerHTML = seriesRows
     .map(([label, series]) => {
+      const link = buildSeriesInfoLink(series);
       const fields = [
         `ID: ${series.id}`,
         `Source: ${series.source}`,
@@ -508,6 +616,11 @@ function renderSeriesContext(insightsPayload) {
         <div class="series-context-item">
           <div class="series-context-title">${escapeHtml(label)}: ${escapeHtml(series.name)}</div>
           <div class="series-context-meta">${escapeHtml(fields.join(" | "))}</div>
+          ${
+            link
+              ? `<div class="series-context-link"><a href="${escapeHtml(link)}" target="_blank" rel="noopener noreferrer">Open source series details</a></div>`
+              : ""
+          }
         </div>
       `;
     })
@@ -548,7 +661,7 @@ function renderInflectionPoints(insightsPayload) {
           const deltaText = formatNumber(point.delta, 3);
           return `
             <li>
-              <strong>${escapeHtml(formatDate(point.date))}</strong> - Series ${escapeHtml(point.series.toUpperCase())}
+              <strong>${escapeHtml(formatDate(point.date))}</strong> - ${escapeHtml(point.series)}
               turned <strong>${escapeHtml(point.direction)}</strong> (delta ${escapeHtml(deltaText)}).
               <div class="nearby-events">${formatNearbyEvents(point.nearby_events)}</div>
             </li>
@@ -573,7 +686,7 @@ function renderMajorMovements(insightsPayload) {
           const percentText = formatPercent(move.percent_change, 1);
           return `
             <li>
-              <strong>Series ${escapeHtml(move.series.toUpperCase())}</strong> moved
+              <strong>${escapeHtml(move.series)}</strong> moved
               <strong>${escapeHtml(move.direction)}</strong> from
               ${escapeHtml(formatDate(move.start_date))} to ${escapeHtml(formatDate(move.end_date))}
               (change ${escapeHtml(changeText)}, ${escapeHtml(percentText)}).
@@ -632,6 +745,511 @@ function renderEventsTable(events) {
     .join("");
 }
 
+function getSelectedSeriesById(seriesId) {
+  return state.seriesList.find((series) => String(series.id) === String(seriesId)) || null;
+}
+
+function getDefaultAnalysisTitle() {
+  const seriesA = getSelectedSeriesById(elements.seriesA.value);
+  const seriesB = getSelectedSeriesById(elements.seriesB.value);
+  const nameA = seriesA ? seriesA.name : "Series A";
+  const nameB = seriesB ? seriesB.name : "Series B";
+  return `${nameA} vs ${nameB} (${elements.startDate.value} to ${elements.endDate.value})`;
+}
+
+function applySavedAnalysisToControls(saved) {
+  if (!saved) {
+    return;
+  }
+  if (saved.series_a_id) {
+    elements.seriesA.value = String(saved.series_a_id);
+  }
+  if (saved.series_b_id) {
+    elements.seriesB.value = String(saved.series_b_id);
+  }
+  if (saved.start_date) {
+    elements.startDate.value = saved.start_date;
+  }
+  if (saved.end_date) {
+    elements.endDate.value = saved.end_date;
+  }
+
+  elements.eventCategory.value = saved.event_category_filter || "";
+  elements.analysisTitleInput.value = saved.title || "";
+  elements.shareNotesToggle.checked = Boolean(saved.share_include_notes);
+}
+
+function selectSavedViewOption(viewId) {
+  if (!viewId) {
+    elements.savedViewsSelect.value = "";
+    return;
+  }
+  elements.savedViewsSelect.value = String(viewId);
+}
+
+function getActiveOwnedAnalysis() {
+  if (!state.user || !state.activeSavedAnalysis) {
+    return null;
+  }
+  if (state.activeSavedAnalysis.user_id !== state.user.id) {
+    return null;
+  }
+  return state.activeSavedAnalysis;
+}
+
+function buildShareUrlFromToken(token) {
+  if (!token) {
+    return "";
+  }
+  const shareUrl = new URL(window.location.href);
+  shareUrl.searchParams.set("share", token);
+  return shareUrl.toString();
+}
+
+function renderShareLinkFromToken(token) {
+  const shareUrl = buildShareUrlFromToken(token);
+  if (!shareUrl) {
+    setShareLinkText("");
+    return "";
+  }
+  setShareLinkText(`Share link: ${shareUrl}`);
+  return shareUrl;
+}
+
+function renderNotesTable(notes) {
+  const canDelete = Boolean(getActiveOwnedAnalysis());
+  if (!notes.length) {
+    elements.notesTableBody.innerHTML = `
+      <tr>
+        <td colspan="3" class="empty-note">No notes saved for this view yet.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  elements.notesTableBody.innerHTML = notes
+    .map(
+      (note) => `
+        <tr>
+          <td>${escapeHtml(formatDate(note.created_at?.slice?.(0, 10) || ""))}</td>
+          <td>${escapeHtml(note.note_text)}</td>
+          <td>
+            ${
+              canDelete
+                ? `<button class="muted-btn notes-delete-btn" data-note-id="${note.id}" type="button">Delete</button>`
+                : `<span class="empty-note">Read only</span>`
+            }
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  if (canDelete) {
+    const buttons = elements.notesTableBody.querySelectorAll("[data-note-id]");
+    buttons.forEach((button) => {
+      button.addEventListener("click", () => {
+        deleteNote(button.getAttribute("data-note-id"));
+      });
+    });
+  }
+}
+
+function clearWorkspaceSelectionContext() {
+  if (!state.activeSavedAnalysis) {
+    return;
+  }
+  state.activeSavedAnalysis = null;
+  state.activeNotes = [];
+  renderNotesTable(state.activeNotes);
+  elements.shareNotesToggle.checked = false;
+  selectSavedViewOption(null);
+  setShareLinkText("");
+  updateWorkspaceUserLabel();
+}
+
+function requireLoggedIn(action) {
+  if (state.user) {
+    return true;
+  }
+  setWorkspaceStatus(`Log in before ${action}.`, true);
+  return false;
+}
+
+function updateWorkspaceUserLabel() {
+  if (!state.user) {
+    elements.authFormControls.classList.remove("hidden");
+    elements.loggedInControls.classList.add("hidden");
+    elements.workspaceUserLabel.textContent = "";
+    setWorkspaceStatus("Not logged in.");
+    return;
+  }
+  elements.authFormControls.classList.add("hidden");
+  elements.loggedInControls.classList.remove("hidden");
+  elements.workspaceUserLabel.textContent = `Logged in as ${state.user.username}`;
+  setWorkspaceStatus(`Logged in as ${state.user.username}.`);
+}
+
+async function registerUser() {
+  const username = elements.usernameInput.value.trim().toLowerCase();
+  const password = elements.passwordInput.value;
+
+  if (!username || !password) {
+    setWorkspaceStatus("Enter both username and password to register.", true);
+    return;
+  }
+
+  const payload = {
+    username,
+    password,
+    name: username,
+  };
+
+  try {
+    const user = await fetchJson(`${getApiBaseUrl()}/workspace/users`, {
+      method: "POST",
+      body: payload,
+    });
+    state.user = user;
+    elements.passwordInput.value = "";
+    updateWorkspaceUserLabel();
+    await loadSavedViews();
+    setWorkspaceStatus(`Account created and logged in as ${user.username}.`);
+  } catch (error) {
+    setWorkspaceStatus(`Registration failed: ${error.message}`, true);
+  }
+}
+
+async function loginUser() {
+  const username = elements.usernameInput.value.trim().toLowerCase();
+  const password = elements.passwordInput.value;
+
+  if (!username || !password) {
+    setWorkspaceStatus("Enter both username and password to log in.", true);
+    return;
+  }
+
+  try {
+    const user = await fetchJson(`${getApiBaseUrl()}/workspace/auth/login`, {
+      method: "POST",
+      body: { username, password },
+    });
+    state.user = user;
+    elements.passwordInput.value = "";
+    updateWorkspaceUserLabel();
+    await loadSavedViews();
+
+    if (state.activeSavedAnalysis && state.activeSavedAnalysis.user_id === user.id) {
+      selectSavedViewOption(state.activeSavedAnalysis.id);
+      elements.shareNotesToggle.checked = Boolean(state.activeSavedAnalysis.share_include_notes);
+      await refreshNotes();
+    }
+  } catch (error) {
+    setWorkspaceStatus(`Login failed: ${error.message}`, true);
+  }
+}
+
+function logoutUser() {
+  state.user = null;
+  state.savedViews = [];
+  state.activeSavedAnalysis = null;
+  state.activeNotes = [];
+  renderNotesTable([]);
+  selectSavedViewOption(null);
+  elements.shareNotesToggle.checked = false;
+  setShareLinkText("");
+  renderSavedViewsOptions();
+  updateWorkspaceUserLabel();
+  setWorkspaceStatus("Logged out.");
+}
+
+async function saveView() {
+  if (!requireLoggedIn("saving a view")) {
+    return;
+  }
+
+  if (!elements.seriesA.value || !elements.seriesB.value) {
+    setWorkspaceStatus("Pick two series before saving a view.", true);
+    return;
+  }
+
+  const title = elements.analysisTitleInput.value.trim() || getDefaultAnalysisTitle();
+  const payload = {
+    title,
+    description: "Saved from Everyday Analyst web view",
+    series_a_id: Number(elements.seriesA.value),
+    series_b_id: Number(elements.seriesB.value),
+    start_date: elements.startDate.value || null,
+    end_date: elements.endDate.value || null,
+    event_category_filter: elements.eventCategory.value || null,
+    is_bookmarked: Boolean(getActiveOwnedAnalysis()?.is_bookmarked),
+    share_include_notes: Boolean(elements.shareNotesToggle.checked),
+  };
+
+  try {
+    const saved = await fetchJson(`${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses`, {
+      method: "POST",
+      body: payload,
+    });
+
+    state.activeSavedAnalysis = saved;
+    elements.analysisTitleInput.value = saved.title;
+    elements.shareNotesToggle.checked = Boolean(saved.share_include_notes);
+    selectSavedViewOption(saved.id);
+    renderShareLinkFromToken(saved.share_token);
+    setWorkspaceStatus(`Saved view: ${saved.title}`);
+    await loadSavedViews();
+    await refreshNotes();
+  } catch (error) {
+    setWorkspaceStatus(`Save failed: ${error.message}`, true);
+  }
+}
+
+async function toggleBookmark() {
+  if (!requireLoggedIn("bookmarking")) {
+    return;
+  }
+
+  let analysis = getActiveOwnedAnalysis();
+  if (!analysis) {
+    await saveView();
+    analysis = getActiveOwnedAnalysis();
+    if (!analysis) {
+      return;
+    }
+  }
+
+  try {
+    const updated = await fetchJson(
+      `${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses/${analysis.id}/bookmark`,
+      {
+        method: "PATCH",
+        body: { is_bookmarked: !analysis.is_bookmarked },
+      },
+    );
+    state.activeSavedAnalysis = updated;
+    selectSavedViewOption(updated.id);
+    const bookmarkText = updated.is_bookmarked ? "bookmarked" : "unbookmarked";
+    setWorkspaceStatus(`View ${bookmarkText}.`);
+    await loadSavedViews();
+  } catch (error) {
+    setWorkspaceStatus(`Bookmark update failed: ${error.message}`, true);
+  }
+}
+
+async function shareView() {
+  let analysis = state.activeSavedAnalysis;
+  if (!analysis || !analysis.share_token) {
+    await saveView();
+    analysis = state.activeSavedAnalysis;
+  }
+
+  if (!analysis?.share_token) {
+    setWorkspaceStatus("Save a view before sharing.", true);
+    return;
+  }
+
+  const owned = getActiveOwnedAnalysis();
+  if (owned && owned.share_include_notes !== Boolean(elements.shareNotesToggle.checked)) {
+    await updateShareSettings();
+    analysis = state.activeSavedAnalysis;
+  }
+
+  const shareUrl = renderShareLinkFromToken(analysis.share_token);
+  if (!shareUrl) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(shareUrl);
+    setWorkspaceStatus("Share link copied to clipboard.");
+  } catch (_error) {
+    setWorkspaceStatus("Share link generated (copy manually from the line below).");
+  }
+}
+
+async function refreshNotes() {
+  if (!state.activeSavedAnalysis) {
+    state.activeNotes = [];
+    renderNotesTable(state.activeNotes);
+    return;
+  }
+
+  const owned = getActiveOwnedAnalysis();
+  if (!owned) {
+    renderNotesTable(state.activeNotes);
+    return;
+  }
+
+  try {
+    const notes = await fetchJson(
+      `${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses/${owned.id}/notes`,
+    );
+    state.activeNotes = notes;
+    renderNotesTable(state.activeNotes);
+  } catch (error) {
+    setWorkspaceStatus(`Failed to load notes: ${error.message}`, true);
+  }
+}
+
+async function saveNote() {
+  if (!requireLoggedIn("saving notes")) {
+    return;
+  }
+
+  let analysis = getActiveOwnedAnalysis();
+  if (!analysis) {
+    await saveView();
+    analysis = getActiveOwnedAnalysis();
+    if (!analysis) {
+      return;
+    }
+  }
+
+  const noteText = elements.noteInput.value.trim();
+  if (!noteText) {
+    setWorkspaceStatus("Enter a note before saving.", true);
+    return;
+  }
+
+  try {
+    await fetchJson(
+      `${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses/${analysis.id}/notes`,
+      {
+        method: "POST",
+        body: { note_text: noteText },
+      },
+    );
+
+    elements.noteInput.value = "";
+    await refreshNotes();
+    setWorkspaceStatus("Note saved.");
+  } catch (error) {
+    setWorkspaceStatus(`Failed to save note: ${error.message}`, true);
+  }
+}
+
+async function deleteNote(noteIdRaw) {
+  if (!requireLoggedIn("deleting notes")) {
+    return;
+  }
+  const analysis = getActiveOwnedAnalysis();
+  if (!analysis) {
+    setWorkspaceStatus("Load one of your saved views to delete notes.", true);
+    return;
+  }
+
+  const noteId = Number(noteIdRaw);
+  if (!Number.isFinite(noteId)) {
+    setWorkspaceStatus("Invalid note id.", true);
+    return;
+  }
+
+  try {
+    await fetchJson(
+      `${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses/${analysis.id}/notes/${noteId}`,
+      { method: "DELETE" },
+    );
+    await refreshNotes();
+    setWorkspaceStatus("Note deleted.");
+  } catch (error) {
+    setWorkspaceStatus(`Failed to delete note: ${error.message}`, true);
+  }
+}
+
+async function loadSavedViewById(viewId) {
+  if (!requireLoggedIn("loading saved views")) {
+    return;
+  }
+  const parsedId = Number(viewId);
+  if (!Number.isFinite(parsedId)) {
+    setWorkspaceStatus("Choose a saved view first.", true);
+    return;
+  }
+
+  const view = state.savedViews.find((item) => item.id === parsedId);
+  if (!view) {
+    setWorkspaceStatus("Saved view not found locally. Refresh list and try again.", true);
+    return;
+  }
+
+  state.activeSavedAnalysis = view;
+  applySavedAnalysisToControls(view);
+  selectSavedViewOption(view.id);
+  renderShareLinkFromToken(view.share_token);
+  await refreshNotes();
+
+  try {
+    await loadComparison();
+    setWorkspaceStatus(`Loaded saved view: ${view.title}`);
+  } catch (error) {
+    setWorkspaceStatus(`Loaded view settings but compare failed: ${error.message}`, true);
+  }
+}
+
+async function updateShareSettings() {
+  if (!requireLoggedIn("updating share settings")) {
+    elements.shareNotesToggle.checked = false;
+    return;
+  }
+
+  const analysis = getActiveOwnedAnalysis();
+  if (!analysis) {
+    if (state.activeSavedAnalysis) {
+      elements.shareNotesToggle.checked = Boolean(state.activeSavedAnalysis.share_include_notes);
+      setWorkspaceStatus("Only the owner can change note sharing.", true);
+    }
+    return;
+  }
+
+  try {
+    const updated = await fetchJson(
+      `${getApiBaseUrl()}/workspace/users/${state.user.id}/saved-analyses/${analysis.id}/share-settings`,
+      {
+        method: "PATCH",
+        body: { share_include_notes: Boolean(elements.shareNotesToggle.checked) },
+      },
+    );
+    state.activeSavedAnalysis = updated;
+    await loadSavedViews();
+    selectSavedViewOption(updated.id);
+    setWorkspaceStatus(
+      updated.share_include_notes
+        ? "Share links now include notes."
+        : "Share links now hide notes.",
+    );
+  } catch (error) {
+    setWorkspaceStatus(`Failed to update sharing settings: ${error.message}`, true);
+  }
+}
+
+async function loadSharedAnalysisFromQuery() {
+  const token = new URLSearchParams(window.location.search).get("share");
+  if (!token) {
+    return false;
+  }
+
+  try {
+    const sharedPayload = await fetchJson(`${getApiBaseUrl()}/workspace/shared/${encodeURIComponent(token)}`);
+    const saved = sharedPayload.saved_analysis;
+    applySavedAnalysisToControls(saved);
+    elements.shareNotesToggle.checked = Boolean(saved.share_include_notes);
+    state.activeSavedAnalysis = saved;
+    state.activeNotes = sharedPayload.notes || [];
+    selectSavedViewOption(null);
+    renderNotesTable(state.activeNotes);
+    renderShareLinkFromToken(saved.share_token);
+    const noteShareStatus = sharedPayload.notes_shared
+      ? "Notes are visible in this shared link."
+      : "Notes are private for this shared link.";
+    setWorkspaceStatus(`Loaded shared analysis. ${noteShareStatus}`);
+    return true;
+  } catch (error) {
+    setWorkspaceStatus(`Failed to load shared analysis: ${error.message}`, true);
+    return false;
+  }
+}
+
 async function loadComparison() {
   const seriesAId = elements.seriesA.value;
   const seriesBId = elements.seriesB.value;
@@ -652,9 +1270,7 @@ async function loadComparison() {
   try {
     insightsPayload = await fetchJson(buildInsightsUrl());
   } catch (error) {
-    renderInsightsError(
-      `Insights are currently unavailable for this selection: ${error.message}`,
-    );
+    renderInsightsError(`Insights are currently unavailable for this selection: ${error.message}`);
   }
 
   if (!comparePayload.observations.length) {
@@ -696,6 +1312,14 @@ async function handlePresetChange() {
   const presetId = elements.presetSelect.value;
   const selectedPreset = state.presets.find((item) => String(item.id) === presetId) || null;
   applyPreset(selectedPreset);
+
+  state.activeSavedAnalysis = null;
+  state.activeNotes = [];
+  renderNotesTable(state.activeNotes);
+  elements.shareNotesToggle.checked = false;
+  selectSavedViewOption(null);
+  setShareLinkText("");
+
   try {
     await loadComparison();
   } catch (error) {
@@ -703,38 +1327,61 @@ async function handlePresetChange() {
   }
 }
 
-async function init() {
-  const normalizedApiBaseUrl = normalizeBaseUrl(elements.apiBaseUrl.value);
-  const frontendOrigin = window.location.origin.replace(/\/+$/, "");
-  if (!normalizedApiBaseUrl || normalizedApiBaseUrl === frontendOrigin) {
-    elements.apiBaseUrl.value = inferApiBaseUrl();
-  } else {
-    elements.apiBaseUrl.value = normalizedApiBaseUrl;
-  }
-
-  elements.apiBaseUrl.addEventListener("blur", () => {
-    elements.apiBaseUrl.value = normalizeBaseUrl(elements.apiBaseUrl.value);
-  });
-
-  setDefaultDates();
+function wireEvents() {
   elements.compareBtn.addEventListener("click", handleRenderClick);
   elements.presetSelect.addEventListener("change", handlePresetChange);
+  elements.seriesA.addEventListener("change", clearWorkspaceSelectionContext);
+  elements.seriesB.addEventListener("change", clearWorkspaceSelectionContext);
+  elements.eventCategory.addEventListener("change", clearWorkspaceSelectionContext);
+  elements.startDate.addEventListener("change", clearWorkspaceSelectionContext);
+  elements.endDate.addEventListener("change", clearWorkspaceSelectionContext);
+
+  elements.loginBtn.addEventListener("click", loginUser);
+  elements.registerBtn.addEventListener("click", registerUser);
+  elements.logoutBtn.addEventListener("click", logoutUser);
+  elements.saveViewBtn.addEventListener("click", saveView);
+  elements.bookmarkViewBtn.addEventListener("click", toggleBookmark);
+  elements.shareViewBtn.addEventListener("click", shareView);
+  elements.loadSavedViewBtn.addEventListener("click", () => {
+    loadSavedViewById(elements.savedViewsSelect.value);
+  });
+  elements.refreshSavedViewsBtn.addEventListener("click", loadSavedViews);
+  elements.shareNotesToggle.addEventListener("change", updateShareSettings);
+  elements.saveNoteBtn.addEventListener("click", saveNote);
+  elements.refreshNotesBtn.addEventListener("click", refreshNotes);
+
+  elements.passwordInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      loginUser();
+    }
+  });
+}
+
+async function init() {
+  setDefaultDates();
+  wireEvents();
+  updateWorkspaceUserLabel();
+  renderSavedViewsOptions();
+  renderNotesTable([]);
+  elements.shareNotesToggle.checked = false;
 
   try {
     await loadSeries();
     await loadPresets();
-    if (state.presets.length) {
-      elements.presetSelect.value = String(state.presets[0].id);
-      applyPreset(state.presets[0]);
-    } else {
-      applyPreset(null);
+
+    const loadedShare = await loadSharedAnalysisFromQuery();
+    if (!loadedShare) {
+      if (state.presets.length) {
+        elements.presetSelect.value = String(state.presets[0].id);
+        applyPreset(state.presets[0]);
+      } else {
+        applyPreset(null);
+      }
     }
+
     await loadComparison();
   } catch (error) {
-    setStatus(
-      `Initialization failed: ${error.message}. Check API URL and CORS configuration.`,
-      true,
-    );
+    setStatus(`Initialization failed: ${error.message}. Verify the backend is running.`, true);
   }
 }
 

@@ -8,6 +8,18 @@ from app.schemas.series import (
     SeriesCreate,
     SeriesRead,
 )
+from app.schemas.workspace import (
+    SavedAnalysisBookmarkUpdate,
+    SavedAnalysisCreate,
+    SavedAnalysisRead,
+    SavedAnalysisShareSettingsUpdate,
+    SharedAnalysisRead,
+    UserCreate,
+    UserLoginRequest,
+    UserNoteCreate,
+    UserNoteRead,
+    UserRead,
+)
 
 __all__ = [
     "SeriesCreate",
@@ -22,4 +34,14 @@ __all__ = [
     "InsightMajorMovement",
     "InsightsResponse",
     "PresetRead",
+    "UserCreate",
+    "UserRead",
+    "UserLoginRequest",
+    "SavedAnalysisCreate",
+    "SavedAnalysisRead",
+    "SavedAnalysisBookmarkUpdate",
+    "SavedAnalysisShareSettingsUpdate",
+    "UserNoteCreate",
+    "UserNoteRead",
+    "SharedAnalysisRead",
 ]
