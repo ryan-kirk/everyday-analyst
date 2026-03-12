@@ -54,6 +54,22 @@
         color: #405267;
       }
 
+      .legal-line {
+        margin: -0.4rem 0 1rem;
+        font-size: 0.83rem;
+        color: #5a4a2a;
+      }
+
+      .legal-line a {
+        color: #0a5d78;
+        text-decoration: none;
+        border-bottom: 1px dotted currentColor;
+      }
+
+      .legal-line a:hover {
+        color: #084c62;
+      }
+
       .card {
         background: var(--surface);
         border: 1px solid var(--line);
@@ -420,6 +436,22 @@
         font-size: 0.92rem;
       }
 
+      .app-footer {
+        margin-top: 0.8rem;
+        font-size: 0.82rem;
+        color: #4f6276;
+      }
+
+      .app-footer a {
+        color: #0a5d78;
+        text-decoration: none;
+        border-bottom: 1px dotted currentColor;
+      }
+
+      .app-footer a:hover {
+        color: #084c62;
+      }
+
       @media (max-width: 900px) {
         .compare-grid {
           grid-template-columns: 1fr 1fr;
@@ -457,6 +489,10 @@
     <main class="page">
       <h1>Everyday Analyst</h1>
       <p class="subtitle">Compare two public time series on a shared timeline.</p>
+      <p class="legal-line">
+        Informational use only. No endorsement implied and not financial advice.
+        <a href="./terms.html">Terms of Service</a>
+      </p>
 
       <section class="card controls">
         <div class="compare-grid">
@@ -663,6 +699,11 @@
           </table>
         </div>
       </section>
+
+      <p class="app-footer">
+        This product uses the FRED(R) API but is not endorsed or certified by the Federal Reserve
+        Bank of St. Louis. Read the <a href="./terms.html">Terms of Service</a>.
+      </p>
     </main>
 
     <script src="./app.js"></script>

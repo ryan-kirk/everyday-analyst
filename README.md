@@ -1,27 +1,33 @@
 # Everyday Analyst
 
-Everyday Analyst is an MVP decision-support app for comparing two public time series on a shared timeline and aligning them with notable macro events.
+Everyday Analyst is an MVP decision-support app that helps non-expert users compare two public time series on a shared timeline, contextualize changes with notable macro events, and save/share analysis views.
 
 ## Current App Capabilities
 
-- Ingests normalized time series data from FRED and BLS.
-- Ingests notable events (FOMC, CPI releases, NFP releases, GDP releases).
-- Serves API endpoints for series, observations, events, and two-series comparison.
-- Serves an insights endpoint that summarizes correlation, inflections, major moves, and nearby events.
-- Serves preset analyst workflows (Fed Watch, Inflation vs Rates, Housing vs Mortgage Rates, Labor Market vs Rates, etc.).
-- Renders a browser-based chart comparison UI with:
-  - two series selectors
-  - date range controls
+- Normalized ingestion pipelines for economic and market time series.
+- Event ingestion for FOMC dates and major release calendars.
+- API endpoints for series, observations, events, compare, insights, presets, and workspace features.
+- Deterministic insights that report overlap method, correlation, inflections, major moves, and nearby events.
+- Preset analyst workflows (Fed Watch, Inflation vs Rates, Housing vs Mortgage Rates, Labor Market vs Rates, Growth vs Rates).
+- User workspace features:
+  - register/login
+  - save comparison views
+  - bookmark saved views
+  - generate share links
+  - add and delete notes tied to saved analyses
+- Frontend charting with Chart.js including:
+  - dual-axis compare view
+  - event markers and vertical event lines
   - event category filter
-  - event markers and vertical event-date lines
-  - tooltips containing event details
+  - insights panel
+  - events table
 
 ## Tech Stack
 
 - Backend: FastAPI, SQLAlchemy, Pydantic
-- Database: SQLite (default local dev)
+- Database: SQLite (default local and current Fly volume deployment)
 - Frontend: plain HTML + JavaScript + Chart.js
-- Ingestion: requests + retry logic, script-driven and scheduler-ready
+- Ingestion: requests/httpx-style retry helpers, script-based jobs, scheduler support
 
 ## Project Structure
 
@@ -29,20 +35,21 @@ Everyday Analyst is an MVP decision-support app for comparing two public time se
 everyday-analyst/
   backend/
     app/
-      api/         # FastAPI routes
-      db/          # engine/session/base/schema helpers
-      ingestion/   # source clients + normalization/store utilities
-      jobs/        # ingestion jobs + scheduler
+      api/         # FastAPI route handlers
+      db/          # engine/session/base/schema guard helpers
+      ingestion/   # source clients + normalization + upsert storage
+      jobs/        # orchestration jobs + scheduler loop
       models/      # SQLAlchemy ORM models
-      schemas/     # Pydantic response/request schemas
-      services/    # business logic used by API handlers
+      schemas/     # Pydantic schemas
+      services/    # business logic used by API routes
       main.py
-    tests/         # unit/integration-style tests
+    tests/         # unit + API integration-style tests
     requirements.txt
     alembic/       # migration placeholder
   frontend/
     index.html
     app.js
+    terms.html
   scripts/         # ingestion entry points
 ```
 
@@ -60,16 +67,23 @@ Expected keys:
 FRED_API_KEY=your_fred_key
 BLS_API_KEY=your_bls_key_optional
 DATABASE_URL=sqlite:///backend/everyday_analyst.db
+
+# Optional comma-separated IDs for population/local domain expansion
+POPULATION_MIGRATION_SERIES_IDS=NETMIGNACS006037,NETMIGNACS006059
+COUNTY_HOUSING_PERMIT_SERIES_IDS=BPPRIV006037,BPPRIV006059
+LOCAL_EMPLOYMENT_BLS_SERIES_IDS=LAUCN060590000000005,LAUCN360610000000005
 ```
 
 Notes:
-- `FRED_API_KEY` is required for FRED data/event ingestion.
-- `BLS_API_KEY` is optional for the public BLS API.
+- `FRED_API_KEY` is required for FRED series and release-calendar ingestion.
+- `BLS_API_KEY` is optional for BLS public API usage.
 - If `DATABASE_URL` is omitted, backend defaults to SQLite at `backend/everyday_analyst.db`.
+- Environment ID variables are optional. If omitted, default baseline population/local series are still ingested.
+- ID format is source-native series IDs (not display names), comma-separated. IDs are uppercased and deduplicated automatically.
 
 ## Install and Run
 
-1. Create/activate a virtual environment and install dependencies:
+1. Create/activate virtual environment and install dependencies:
 
 ```bash
 python3 -m venv .venv
@@ -84,154 +98,16 @@ cd backend
 ../.venv/bin/uvicorn app.main:app --reload
 ```
 
-3. Open the app:
-- Option A (recommended): backend serves frontend at `http://127.0.0.1:8000/`
-- Option B: serve frontend separately:
+3. Open app in browser:
+- Recommended: backend serves frontend at `http://127.0.0.1:8000/`
+- Optional separate frontend server:
 
 ```bash
 cd frontend
 python3 -m http.server 5500
 ```
 
-If running Option B, set `API Base URL` in the UI to `http://127.0.0.1:8000`.
-
-## API Methods
-
-### `GET /health`
-- Returns service liveness.
-- Response:
-
-```json
-{"status":"ok"}
-```
-
-### `GET /series`
-- Returns all available normalized time series metadata.
-
-### `GET /series/{series_id}/observations?start=&end=`
-- Returns observations for one series.
-- Query params:
-  - `start` (optional, `YYYY-MM-DD`)
-  - `end` (optional, `YYYY-MM-DD`)
-
-### `GET /events?start=&end=&category=`
-- Returns events in a date range.
-- Query params:
-  - `start` (optional)
-  - `end` (optional)
-  - `category` (optional; examples: `fomc`, `labor`, `inflation`, `growth`)
-
-### `GET /compare?series_a=&series_b=&start=&end=&event_category=`
-- Returns aligned observations for two series and related events in range.
-- Query params:
-  - `series_a` (required, internal series id)
-  - `series_b` (required, internal series id)
-  - `start` (optional)
-  - `end` (optional)
-  - `event_category` (optional; supports repeated params or comma-separated values)
-
-Example compare response shape:
-
-```json
-{
-  "series_a": {"id": 1, "name": "...", "source": "...", "source_series_id": "..."},
-  "series_b": {"id": 2, "name": "...", "source": "...", "source_series_id": "..."},
-  "observations": [
-    {"date": "2026-03-01", "value_a": 3.4, "value_b": 4.1}
-  ],
-  "events": [
-    {
-      "id": 12,
-      "event_date": "2026-03-06",
-      "title": "Nonfarm Payroll Release",
-      "summary": "Employment Situation report release date (includes payrolls).",
-      "category": "labor",
-      "source": "fred_release_calendar",
-      "importance_score": 0.92
-    }
-  ]
-}
-```
-
-### `GET /insights?series_a=&series_b=&start=&end=`
-- Returns deterministic analysis for two series over a date window:
-  - aligned and overlap stats
-  - overlap method (`exact_date` or nearest-date matching for mixed frequencies)
-  - correlation on overlapping values
-  - detected inflection points
-  - major one-step movements
-  - nearby event associations
-  - narrative summary text
-
-### `GET /presets`
-- Returns stored preset comparison templates for predefined analyst workflows.
-- Each preset includes:
-  - `series_a` (source series id)
-  - `series_b` (source series id)
-  - `recommended_date_range` (relative window, for example `1y`, `3y`, `5y`)
-  - `description`
-
-## Backend Modules
-
-### API Layer (`backend/app/api`)
-- `health.py`: liveness endpoint.
-- `series.py`: series list and single-series observations.
-- `events.py`: date/category filtered event retrieval.
-- `compare.py`: two-series aligned comparison + in-range events.
-
-### Service Layer (`backend/app/services`)
-- `series_service.py`: DB query logic for series and observations.
-- `event_service.py`: DB query logic for event ranges/categories.
-- `compare_service.py`: date alignment and compare event retrieval.
-- `insight_service.py`: inflection/correlation/major-move detection and narrative generation.
-- `preset_service.py`: default preset seeding and preset retrieval.
-
-### Models (`backend/app/models`)
-- `Series`: source metadata for each time series.
-- `Observation`: normalized dated values linked to `Series`.
-- `Event`: notable event timeline data with category and importance.
-- `Preset`: stored workflow templates with recommended pairings and date ranges.
-
-### Schemas (`backend/app/schemas`)
-- Pydantic schemas for `series`, `event`, and `compare` responses.
-
-### DB Layer (`backend/app/db`)
-- `database.py`: engine/session setup and dependency injection.
-- `base.py`: declarative base.
-- `schema_utils.py`: lightweight schema guard for iterative local changes.
-
-### Ingestion (`backend/app/ingestion`)
-- `fred_client.py`: FRED series metadata + observations ingestion.
-- `bls_client.py`: BLS timeseries normalization to monthly observations.
-- `event_client.py`: event ingestion (FOMC calendar + FRED release dates).
-- `http_client.py`: retry-enabled HTTP helpers.
-- `storage.py`: upsert logic for normalized `Series`, `Observation`, and `Event` records.
-
-### Jobs (`backend/app/jobs`)
-- `ingestion_jobs.py`: orchestrates FRED/BLS/event ingestion runs.
-- `scheduler.py`: interval scheduler wrapper for recurring ingestion.
-
-## Data Sources
-
-### FRED (Federal Reserve Economic Data)
-- Time series ingested:
-  - `DGS2`, `DGS10`, `T10Y2Y`, `UNRATE`, `PAYEMS`, `CPIAUCSL`,
-  - `PCEPI`, `INDPRO`, `MORTGAGE30US`, `CSUSHPISA`, `HOUST`
-- Event release calendars used for:
-  - CPI releases
-  - Nonfarm Payroll releases
-  - GDP releases
-
-### BLS Public API
-- Baseline labor series ingested:
-  - `LNS14000000` (Unemployment Rate)
-  - `CES0000000001` (Total Nonfarm Payrolls)
-
-### Federal Reserve
-- FOMC meeting dates parsed from:
-  - `https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm`
-
-## Ingestion Scripts
+## Ingestion Commands
 
 Run from repo root:
 
@@ -240,96 +116,132 @@ python scripts/load_initial_data.py
 python scripts/load_fred_series.py
 python scripts/load_bls_series.py
 python scripts/load_events.py
+python scripts/load_domain_data.py
 python scripts/run_ingestion_scheduler.py
 ```
 
-## Fly.io Deployment (Initial)
+`load_domain_data.py` runs the newer domain ingestors:
+- market
+- housing
+- consumer
+- population/local
 
-This repository is set up to deploy as a single Fly app serving:
-- FastAPI API routes (`/health`, `/series`, `/events`, `/compare`, `/insights`, `/presets`)
-- static frontend from the same container (`/`)
+## API Methods
 
-Deployment files:
-- `fly.toml`
-- `Dockerfile`
+### Core
 
-Important architecture note:
-- Current production database is SQLite on a Fly volume (`/data/everyday_analyst.db`).
-- Because SQLite is file-based, this initial deployment is intentionally single-machine.
+- `GET /health`
+- `GET /series`
+- `GET /series/{series_id}/observations?start=&end=`
+- `GET /events?start=&end=&category=`
+- `GET /compare?series_a=&series_b=&start=&end=&event_category=`
+- `GET /insights?series_a=&series_b=&start=&end=`
+- `GET /presets`
 
-### 1. Prerequisites
+`/compare` response includes:
+- `series_a` metadata
+- `series_b` metadata
+- aligned `observations`
+- in-range `events` (respecting optional category filter)
 
-- Install and authenticate Fly CLI:
+### Workspace
 
-```bash
-fly auth login
-```
+- `POST /workspace/users` (register)
+- `POST /workspace/auth/login` (login)
+- `GET /workspace/users/{user_id}`
+- `POST /workspace/users/{user_id}/saved-analyses`
+- `GET /workspace/users/{user_id}/saved-analyses`
+- `PATCH /workspace/users/{user_id}/saved-analyses/{analysis_id}/bookmark`
+- `PATCH /workspace/users/{user_id}/saved-analyses/{analysis_id}/share-settings`
+- `POST /workspace/users/{user_id}/saved-analyses/{analysis_id}/notes`
+- `GET /workspace/users/{user_id}/saved-analyses/{analysis_id}/notes`
+- `DELETE /workspace/users/{user_id}/saved-analyses/{analysis_id}/notes/{note_id}`
+- `GET /workspace/shared/{share_token}`
 
-### 2. Create app and volume (first time)
+## Backend Modules
 
-From repo root:
+### API Layer (`backend/app/api`)
+- `health.py`: liveness endpoint.
+- `series.py`: series list + single series observations.
+- `events.py`: range/category-filtered events.
+- `compare.py`: dual-series alignment + events overlay payload.
+- `insights.py`: insight payload endpoint.
+- `presets.py`: preset listing endpoint.
+- `workspace.py`: user/saved-analysis/note/share routes.
 
-```bash
-fly launch --no-deploy --copy-config --name everyday-analyst --region ord
-fly volumes create data --region ord --size 1
-```
+### Service Layer (`backend/app/services`)
+- `series_service.py`: series metadata and observation queries.
+- `event_service.py`: event queries by range/category.
+- `compare_service.py`: shared-date alignment and compare payload assembly.
+- `insight_service.py`: deterministic metrics, inflections, movements, and narratives.
+- `preset_service.py`: default preset provisioning and retrieval.
+- `workspace_service.py`: user auth + saved analysis + note/share logic.
 
-If app name is already taken globally, pick a unique name and update `app = "..."` in `fly.toml`.
+### Models (`backend/app/models`)
+- `Series`
+- `Observation`
+- `Event`
+- `Preset`
+- `User`
+- `SavedAnalysis`
+- `UserNote`
 
-### 3. Set required secrets
+### Schemas (`backend/app/schemas`)
+- `series.py`
+- `event.py`
+- `compare.py`
+- `insights.py`
+- `preset.py`
+- `workspace.py`
 
-```bash
-fly secrets set FRED_API_KEY=your_fred_api_key
-fly secrets set BLS_API_KEY=your_bls_api_key_optional
-```
+### DB Layer (`backend/app/db`)
+- `database.py`: engine/session setup.
+- `base.py`: SQLAlchemy base.
+- `schema_utils.py`: compatibility guards for iterative schema changes.
 
-`DATABASE_URL` is already set in `fly.toml` to use the mounted volume path.
+### Ingestion (`backend/app/ingestion`)
+- Core connectors:
+  - `fred_client.py`
+  - `bls_client.py`
+  - `event_client.py`
+  - `stooq_client.py`
+- Domain connectors:
+  - `market_client.py`
+  - `housing_client.py`
+  - `consumer_client.py`
+  - `population_client.py`
+- Shared ingestion framework:
+  - `domain_pipeline.py` (source dispatch + metadata overrides + optional failure handling)
+  - `storage.py` (normalized upserts)
+  - `http_client.py` (retry-enabled HTTP helpers)
 
-### 4. Deploy
+### Jobs (`backend/app/jobs`)
+- `ingestion_jobs.py`: orchestrates source and domain ingestion jobs.
+- `scheduler.py`: periodic ingestion loop wrapper.
 
-```bash
-fly deploy
-```
+## Data Sources
 
-### 5. Load initial data on Fly
+### FRED (Federal Reserve Economic Data)
+- Core macro/rates: `DGS2`, `DGS10`, `T10Y2Y`, `UNRATE`, `PAYEMS`, `CPIAUCSL`, `PCEPI`, `INDPRO`, `MORTGAGE30US`, `CSUSHPISA`, `HOUST`
+- Market/commodities additions: `SP500`, `VIXCLS`, `NASDAQCOM`, `DCOILWTICO`, `PCOPPUSDM`
+- Housing additions: `USSTHPI`, `PERMIT`, optional `M0264AUSM500NNBR`
+- Consumer additions: `RSAFS`, `RRSFS`, `UMCSENT`, `REVOLSL`, optional `CCLACBW027SBOG`
+- Population/local examples: `POPTHM`, optional `NETMIGNACS006037`, optional county permits via `BPPRIV...`
 
-Run ingestion inside the deployed machine:
+### BLS Public API
+- Baseline labor series:
+  - `LNS14000000` (Unemployment Rate)
+  - `CES0000000001` (Total Nonfarm Payrolls)
+- Optional local employment via env IDs (examples use `LAUCN...`).
 
-```bash
-fly ssh console -C "python /app/scripts/load_initial_data.py"
-```
+### Federal Reserve Board Website
+- FOMC meeting dates parsed from:
+  - `https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm`
 
-Optional BLS backfill:
-
-```bash
-fly ssh console -C "python /app/scripts/load_bls_series.py"
-```
-
-### 6. Verify
-
-```bash
-fly status
-fly logs
-curl https://<your-app-name>.fly.dev/health
-```
-
-### 7. Day-2 operations
-
-- Redeploy after code changes:
-
-```bash
-fly deploy
-```
-
-- Re-run event refresh:
-
-```bash
-fly ssh console -C "python /app/scripts/load_events.py"
-```
-
-- Scale guidance:
-  - Do not scale horizontally with SQLite volume architecture.
-  - Move to managed Postgres before multi-machine scaling.
+### Stooq
+- ETF price history ingestion used for treasury ETF examples:
+  - `IEF`
+  - `TLT`
 
 ## Unit Tests
 
@@ -340,7 +252,7 @@ cd backend
 python -m unittest -v
 ```
 
-Current test modules:
+Current test modules include:
 - `test_health.py`
 - `test_compare.py`
 - `test_events_api.py`
@@ -349,47 +261,91 @@ Current test modules:
 - `test_event_client.py`
 - `test_insights.py`
 - `test_presets_api.py`
+- `test_workspace_api.py`
+- `test_stooq_client.py`
+- `test_domain_pipeline.py`
+- `test_market_client.py`
+- `test_housing_client.py`
+- `test_consumer_client.py`
+- `test_population_client.py`
+- `test_ingestion_jobs.py`
 
 Coverage focus:
-- API behavior (`/health`, `/compare`, `/events`, `/insights`, `/presets`)
-- normalization/parsing for FRED, BLS, and event ingestion
-- storage upsert behavior for core ingestion paths
+- core API behavior
+- workspace API behavior
+- source normalization and parsing
+- domain pipeline behavior (overrides, optional/required failures)
+- storage upsert behavior
 
 ## Frontend Capabilities
 
-Current UI (`frontend/index.html` + `frontend/app.js`):
-- API base URL input (with local dev auto-detection)
-- Preset workflow selector with auto-applied series/date-range templates
-- Series A / Series B selection
-- Date range selection
-- Event category filter
-- Comparison line chart with aligned timeline
-- Event overlays:
-  - marker points
-  - vertical date lines
-  - hover tooltip event details
+Current UI (`frontend/index.html` + `frontend/app.js`) supports:
+- preset selector + auto-apply behavior
+- series A/B selectors
+- date range controls
+- event category filtering
+- comparison chart with two datasets and optional dual-axis rendering
+- event markers + vertical event lines + tooltip event context
+- insights panel:
+  - narrative summary
+  - series context with source links
+  - inflection points
+  - major movements
+- events table for selected range
+- workspace panel:
+  - user login/register/logout
+  - save/bookmark/share analysis views
+  - saved view list load/refresh
+  - notes CRUD for saved analyses
+- terms page link (`/terms.html` when served by FastAPI static hosting)
 
-## Compliance Note for FRED Data
+## Fly.io Deployment (Initial)
 
-Place this notice prominently in the application:
+This repository is currently configured as a single Fly app serving:
+- FastAPI API routes
+- static frontend from the same container
 
-`This product uses the FRED(R) API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.`
+Deployment files:
+- `fly.toml`
+- `Dockerfile`
 
-Copyrighted FRED series contain "Copyright" in notes metadata.
+Architecture note:
+- Current production DB setup is SQLite on Fly volume (`/data/everyday_analyst.db`).
+- This is intentionally single-machine until migration to Postgres.
 
-## License and Terms Constraints
+Deploy summary:
 
-This section summarizes practical constraints for the software libraries and external data/services currently used by this repository. It is an engineering checklist, not legal advice.
+```bash
+fly auth login
+fly launch --no-deploy --copy-config --name everyday-analyst --region ord
+fly volumes create data --region ord --size 1
+fly secrets set FRED_API_KEY=your_fred_api_key
+fly secrets set BLS_API_KEY=your_bls_api_key_optional
+fly deploy
+```
 
-### Disclosure
+Load data inside deployed machine:
 
-- No endorsement: Use of this application does not imply endorsement of any product, service, issuer, or data provider.
-- Not financial advice: This application is for informational and educational purposes only and does not constitute financial, investment, legal, or tax advice.
+```bash
+fly ssh console -C "python /app/scripts/load_initial_data.py"
+fly ssh console -C "python /app/scripts/load_domain_data.py"
+fly ssh console -C "python /app/scripts/load_events.py"
+```
 
-### Software licenses used in this project
+## Compliance, Licenses, and Terms Constraints
 
-Current dependency set in this repo is permissive-license heavy:
+This section is an engineering summary and is not legal advice.
 
+### Required disclosures
+
+- No endorsement: use of this app does not imply endorsement of any product, issuer, service, or data provider.
+- Not financial advice: this app is informational/educational only and does not provide investment, legal, tax, or professional advice.
+- FRED required notice:
+  - `This product uses the FRED(R) API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.`
+
+### Software license summary
+
+Current dependency profile is primarily permissive licenses:
 - FastAPI: MIT
 - Uvicorn: BSD-3-Clause
 - SQLAlchemy: MIT
@@ -397,86 +353,50 @@ Current dependency set in this repo is permissive-license heavy:
 - requests: Apache-2.0
 - python-dotenv: BSD-3-Clause
 - httpx: BSD-3-Clause
-- Chart.js (CDN): MIT
+- Chart.js: MIT
 
-Practical obligations for these licenses:
-
-- Preserve copyright and license notices when redistributing software.
-- Include required license text in distributions where applicable.
-- Do not imply endorsement by upstream project maintainers.
-- Accept "as-is" warranty disclaimers in those licenses.
+Engineering obligations:
+- Preserve copyright/license notices when redistributing.
+- Include required license texts as needed.
+- Do not imply upstream endorsement.
+- Respect "as-is" warranty disclaimers.
 
 ### Data/API terms constraints
 
-#### FRED API (St. Louis Fed)
+FRED API (St. Louis Fed):
+- Terms: https://fred.stlouisfed.org/docs/api/terms_of_use.html
+- Keep required FRED attribution/disclaimer.
+- Respect third-party rights for copyrighted series.
+- Do not imply Federal Reserve Bank endorsement.
 
-Source: https://fred.stlouisfed.org/docs/api/terms_of_use.html
-
-Key constraints relevant to this app:
-
-- The required notice must be shown in the application:
-  - `This product uses the FRED(R) API but is not endorsed or certified by the Federal Reserve Bank of St. Louis.`
-- Do not imply Fed endorsement or use restricted Fed trademarks/logos.
-- Respect third-party rights on copyrighted FRED series and obtain permission when required.
-- Keep and do not remove proprietary notices attached to data.
-- Comply with any API limits and policy updates.
-
-#### BLS Public API
-
-Sources:
-- https://www.bls.gov/developers/termsOfService.htm
-- https://www.bls.gov/bls/api_features.htm
-
-Key constraints relevant to this app:
-
-- Cite the retrieval date for BLS data.
-- Include the BLS disclaimer text:
+BLS Public API:
+- Terms: https://www.bls.gov/developers/termsOfService.htm
+- API features/limits: https://www.bls.gov/bls/api_features.htm
+- Include BLS disclaimer when presenting BLS-derived analysis:
   - `BLS.gov cannot vouch for the data or analyses derived from these data after the data have been retrieved from BLS.gov.`
-- Do not use BLS logos on non-BLS products.
-- Do not modify/falsely represent BLS content while citing it as BLS.
-- Respect usage limits (for API v2 docs: max 50 series/request, max 500 queries/day, max 20 years/request).
+- Respect documented usage limits and branding constraints.
 
-#### Federal Reserve Board website data (FOMC calendar)
+Federal Reserve Board website materials (FOMC calendar source):
+- Disclaimer: https://www.federalreserve.gov/disclaimer.htm
+- Attribute source, avoid restricted insignia/logo usage, and respect non-Board third-party rights where marked.
 
-Source: https://www.federalreserve.gov/disclaimer.htm
+Stooq (ETF market data source):
+- Site: https://stooq.com/
+- Terms/Regulations: https://stooq.pl/regulamin/
+- Privacy: https://stooq.pl/polityka_prywatnosci/
+- Review and comply with current usage and redistribution restrictions before commercial/public redistribution.
 
-Key constraints relevant to this app:
+Google Fonts (frontend hosted font usage):
+- Terms: https://developers.google.com/fonts/terms
+- FAQ: https://developers.google.com/fonts/faq
+- Privacy FAQ: https://developers.google.com/fonts/faq/privacy
 
-- Unless otherwise indicated, Board information is public domain and may be copied/distributed.
-- Cite the Board as the source.
-- Materials marked as non-Board/copyrighted require permission from the original source.
-- Board seals/logos and related official insignia cannot be used without written permission.
-- Board disclaims warranties; data should be used with caution.
+## Terms of Service Page
 
-### Frontend CDN and hosted asset terms
+The app now includes a dedicated terms page at:
+- `frontend/terms.html`
 
-#### Chart.js CDN asset
+When served by FastAPI static hosting, this is available at:
+- `/terms.html`
 
-Source: https://github.com/chartjs/Chart.js
-
-- Chart.js is MIT-licensed.
-- If vendoring or redistributing, preserve MIT license notice.
-
-#### Google Fonts API (Space Grotesk)
-
-Sources:
-- https://developers.google.com/fonts/terms
-- https://developers.google.com/fonts/faq
-- https://developers.google.com/fonts/faq/privacy
-
-Key constraints relevant to this app:
-
-- Using the Google Fonts API means agreeing to Google APIs Terms of Service.
-- Google Fonts are open source and generally allowed for commercial use under each font's specific license.
-- Embedding hosted fonts sends user requests to Google servers (including IP/user-agent/referrer handling described in Google's privacy FAQ).
-- To avoid this data flow, self-host font files.
-
-## Known Follow-Up Work
-- Add admin endpoint/CLI options for incremental backfills.
-- Expand abuse protections/rate-limiting/caching strategy.
-- Add a terms of service page that includes some use restrictions and user disclaimers. 
-- Add more tests for modules and edge-case ingestion failures.
-- Add weekly, monthly type views 
-- Add richer metadata and explanatory insights per series.
-- Add links to meta-data (eg. Fed meeting notes), if possible, into the insights panel. 
-- Require users to have a valid email. Store email and ensure TOS enables use for newsletters/notifications. 
+Keep this page aligned with any data-source, licensing, or compliance changes.

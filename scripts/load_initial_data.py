@@ -11,7 +11,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 from app.db.base import Base
 from app.db.database import engine
-from app.db.schema_utils import ensure_event_columns
+from app.db.schema_utils import ensure_event_columns, ensure_saved_analysis_columns, ensure_workspace_user_columns
 from app.jobs.ingestion_jobs import (
     DEFAULT_FRED_SERIES_IDS,
     run_event_ingestion_job,
@@ -27,6 +27,8 @@ logging.basicConfig(
 def main() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_event_columns(engine)
+    ensure_workspace_user_columns(engine)
+    ensure_saved_analysis_columns(engine)
     result = run_fred_ingestion_job(series_ids=DEFAULT_FRED_SERIES_IDS)
     summary = result["summary"]
     print(

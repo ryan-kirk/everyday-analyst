@@ -4,7 +4,15 @@ import logging
 from datetime import date
 from typing import Any
 
-from app.ingestion import bls_client, event_client, fred_client
+from app.ingestion import (
+    bls_client,
+    consumer_client,
+    event_client,
+    fred_client,
+    housing_client,
+    market_client,
+    population_client,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +93,45 @@ def run_bls_ingestion_job(
     return {"source": "bls", "results": results, "summary": summary}
 
 
+def run_market_ingestion_job(
+    start: date | None = None,
+    end: date | None = None,
+) -> dict[str, Any]:
+    logger.info("Starting market ingestion job")
+    return market_client.ingest_market_series(start=start, end=end)
+
+
+def run_housing_ingestion_job(
+    start: date | None = None,
+    end: date | None = None,
+) -> dict[str, Any]:
+    logger.info("Starting housing ingestion job")
+    return housing_client.ingest_housing_series(start=start, end=end)
+
+
+def run_consumer_ingestion_job(
+    start: date | None = None,
+    end: date | None = None,
+) -> dict[str, Any]:
+    logger.info("Starting consumer ingestion job")
+    return consumer_client.ingest_consumer_series(start=start, end=end)
+
+
+def run_population_ingestion_job(
+    start: date | None = None,
+    end: date | None = None,
+    start_year: int | None = None,
+    end_year: int | None = None,
+) -> dict[str, Any]:
+    logger.info("Starting population ingestion job")
+    return population_client.ingest_population_series(
+        start=start,
+        end=end,
+        start_year=start_year,
+        end_year=end_year,
+    )
+
+
 def run_full_ingestion_job(
     fred_series_ids: list[str] | None = None,
     bls_series_ids: list[str] | None = None,
@@ -101,8 +148,25 @@ def run_full_ingestion_job(
         start_year=bls_start_year,
         end_year=bls_end_year,
     )
+    market_result = run_market_ingestion_job(start=fred_start, end=fred_end)
+    housing_result = run_housing_ingestion_job(start=fred_start, end=fred_end)
+    consumer_result = run_consumer_ingestion_job(start=fred_start, end=fred_end)
+    population_result = run_population_ingestion_job(
+        start=fred_start,
+        end=fred_end,
+        start_year=bls_start_year,
+        end_year=bls_end_year,
+    )
     event_result = run_event_ingestion_job(start=event_start, end=event_end)
-    return {"fred": fred_result, "bls": bls_result, "events": event_result}
+    return {
+        "fred": fred_result,
+        "bls": bls_result,
+        "market": market_result,
+        "housing": housing_result,
+        "consumer": consumer_result,
+        "population": population_result,
+        "events": event_result,
+    }
 
 
 def run_event_ingestion_job(
